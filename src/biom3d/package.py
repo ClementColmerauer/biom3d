@@ -3,6 +3,7 @@ from enum import Enum
 import os
 import torch
 import numpy as np
+import SimpleITK as sitk
 
 from biom3d import register
 from biom3d import utils
@@ -41,21 +42,27 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,best = False):
     print("Folder created at " + folder)
 
     img, metadata = utils.adaptive_imread(test_image)
+    extension = test_image[test_image.rfind('.'):].lower()
+    if extension == ".nii.gz":
+        img = sitk.GetArrayFromImage(img)
+    #img = img.astype(np.float32)
+    #print(img)
     np.save(os.path.join(folder, 'test-input.npy'), img)
     print("Test input image has been saved as test-input.npy")
 
-    """model = loader.model
+    model = loader.model
     print(model,type(model))
 
     model = torch.jit.script(model)
     #traced_script_module = torch.jit.trace(model, img)
     model.save(os.path.join(folder, "weights.pt"))
     print("Model has been saved as weights.pt")
-
+    img_tensor = torch.from_numpy(img)
+    print(img_tensor, type(img_tensor))
     with torch.no_grad():
         output = model(torch.from_numpy(img)).numpy()
     np.save(os.path.join(folder, 'test-output.npy'), output)
-    print("Test output image has been created and saved as test-output.npy")"""
+    print("Test output image has been created and saved as test-output.npy")
 
     """with open(os.path.join(folder, 'doc.md'), "w") as f:
         f.write("# My First Model\n")

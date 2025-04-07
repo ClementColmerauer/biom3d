@@ -184,24 +184,31 @@ class VGGEncoder(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x, use_encoder=False):
+    def forward(self, x, use_encoder:bool=False):
         # stores the intermediate outputs
         out = []
-        for i in range(len(self.layers)):
+        """for i in range(len(self.layers)):
             inputs = x if i==0 else out[-1]
-            out += [self.layers[i](inputs)]
+            out += [self.layers[i](inputs)]"""
+        i = 0
+        for l in self.layers:
+            inputs = x if i==0 else out[-1]
+            out += [l(inputs)]
+            i+=1
+            
             
         if self.use_emb:
             # out = self.last_layer(out[-1])
             # out = self.global_pool(out[-1])
             # out = torch.flatten(out, 1)
-            out = out[-1].view(out[-1].size(0), -1)
+            out = [out[-1].view(out[-1].size(0), -1)]
             # out = nn.functional.normalize(out, dim=-1, p=2)
             # if self.use_head:
             #     out = nn.functional.normalize(out, dim=-1, p=2)
             #     out = self.fc(out)
+            """
             if use_encoder:
-                out = self.head(out)
+                out = self.head(out)"""
             
         return out
 #---------------------------------------------------------------------------
