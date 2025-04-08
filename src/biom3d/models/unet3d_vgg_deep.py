@@ -110,6 +110,6 @@ class UNet(nn.Module):
         # x is an image
         out = self.encoder(x)
         out = self.decoder(out)
-        return out
+        return out[0]
 
 #---------------------------------------------------------------------------
