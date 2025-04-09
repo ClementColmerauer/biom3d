@@ -24,8 +24,8 @@ There are two types of installations:
 
 ### Conda installation
 
-* Install [Anaconda](https://www.anaconda.com/download).
-* Start an Anaconda prompt. For Windows user, look for "Anaconda prompt" in your Windows search bar.
+* Install [Anaconda](https://www.anaconda.com/download) or [Miniforge](https://github.com/conda-forge/miniforge) (which is a lighter version of Anaconda).
+* Start an Anaconda (or Miniforge) prompt. For Windows user, look for "Anaconda prompt" (or "Miniforge prompt") in your Windows search bar.
 * Create a new environment (here named `b3d` but it is up to you): (type in the prompt and press Enter)
 
 ```
@@ -43,12 +43,14 @@ conda activate b3d
 ```
 conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
 ```
+You can also use the pip command if conda isn't available.
 
 * Install biom3d:
 
 ```
 python -m pip install biom3d
 ```
+
 
 * (Optional) If you intended to use Omero or the remote version of Biom3d: (two command lines)
 

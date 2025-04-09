@@ -166,7 +166,7 @@ class VGGDecoder(nn.Module):
         deep_out = []
         out = x[-1]
 
-        
+        #TODO Remove when tested
         '''for i in range(len(self.layers)):
             inputs = x[-1] if i==0 else out
             out = self.layers[i]([inputs, x[-2-i]])
@@ -188,7 +188,7 @@ class VGGDecoder(nn.Module):
 
             if i>=2 and self.use_deep: # deep supervision
                 tmp = c(out)
-                #TODO docment/remove dead code
+                #TODO document/remove dead code
                 # scale_factor = np.array(self.strides)[i+1:].prod(axis=0).tolist()
                 # deep_out += [F.interpolate(tmp, scale_factor=scale_factor, mode='trilinear')]
                 deep_out += [F.interpolate(tmp, size=x[0].shape[2:], mode='trilinear')]
