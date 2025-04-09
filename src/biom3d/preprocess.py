@@ -599,6 +599,7 @@ class Preprocessing:
             if self.use_tif:
                 img_out_path = os.path.join(self.img_outdir, img_fname+'.tif')
                 tifffile.imwrite(img_out_path, img, compression=('zlib'), compressionargs={'level': 1})
+                #TODO document/remove dead code
                 # imsave(img_out_path, img)
                 # tifffile.imwrite(img_out_path, img) # no compression --> increased training speed!
             # save image as npy
@@ -613,6 +614,7 @@ class Preprocessing:
                 if self.use_tif:
                     msk_out_path = os.path.join(self.msk_outdir, img_fname+'.tif')
                     tifffile.imwrite(msk_out_path, msk, compression=('zlib'), compressionargs={'level': 1})
+                    #TODO document/remove dead code
                     # imsave(msk_out_path, msk)
                     # tifffile.imwrite(msk_out_path, msk) # no compression --> increased training speed!
                 # save image as npy
@@ -676,6 +678,7 @@ def auto_config_preprocess(
         intensity_moments = [mean, std]
         if not print_param: print("Done!")
     else:
+        #TODO document/remove dead code
         # median_size = None
         # median_spacing = []
         # if sum(median_spacing)==len(median_size): # in case spacing all = 1 = default value

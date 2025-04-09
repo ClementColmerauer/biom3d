@@ -15,6 +15,7 @@ from biom3d.utils import convert_num_pools
 __all__ = ['ResNet', 'resnet20', 'resnet32', 'resnet44', 'resnet56', 'resnet110', 'resnet1202']
 
 def _weights_init(m):
+    #TODO docment/remove dead code
     # classname = m.__class__.__name__
     #print(classname)
     # if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
@@ -110,6 +111,7 @@ class VGGEncoder(nn.Module):
         self.use_emb=use_emb
         self.use_head = use_head
 
+        #TODO docment/remove dead code
         # computes the strides
         # for example: convert [3,5,5] into [[1 1 1],[1 2 2],[2 2 2],[2 2 2],[2 2 2],[1 2 2]]
         # max_pool = max(num_pools)
@@ -127,7 +129,7 @@ class VGGEncoder(nn.Module):
         strides = np.vstack(([first_stride],strides))
         strides = strides.tolist()
         
-
+        #TODO docment/remove dead code
         # computes the strides (old)
         # strides = [first_stride]
         # num_pools_ = np.array(num_pools)
@@ -144,6 +146,7 @@ class VGGEncoder(nn.Module):
         self.layers = nn.ModuleList(self.layers)
 
         if use_emb:
+            #TODO docment/remove dead code
             # factor = factors[max(num_pools)]
             # emb_size = factor # size of the embedding
             # self.global_pool=GlobalAvgPool3d()
@@ -187,6 +190,7 @@ class VGGEncoder(nn.Module):
     def forward(self, x, use_encoder:bool=False):
         # stores the intermediate outputs
         out = []
+        #TODO Remove when tested
         """for i in range(len(self.layers)):
             inputs = x if i==0 else out[-1]
             out += [self.layers[i](inputs)]"""
@@ -198,6 +202,7 @@ class VGGEncoder(nn.Module):
             
             
         if self.use_emb:
+            #TODO document/remove dead code
             # out = self.last_layer(out[-1])
             # out = self.global_pool(out[-1])
             # out = torch.flatten(out, 1)

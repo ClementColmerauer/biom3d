@@ -172,7 +172,7 @@ def main_pretrain_seg_pred_eval(
             # send(messages=["Evaluation done of model {}! Average result: {}".format(dir_out, np.mean(results))])
 
 #---------------------------------------------------------------------------
-
+#TODO document/remove dead code
 # import configs.config_unet_monai as config_unet_monai
 # import configs.config_genesis as config_genesis
 # import configs.config_unet_genesis as config_unet_genesis

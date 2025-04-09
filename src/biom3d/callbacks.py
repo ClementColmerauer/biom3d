@@ -215,6 +215,7 @@ class LogSaver(Callback):
         train_metrics=None,
         val_metrics=None,
         scheduler=None,
+        #TODO document/remove dead code
         # save_best=False,    # save the best metrics in another text file ? 
         # every_batch=10
         ):    # save period (in batch)
@@ -236,6 +237,7 @@ class LogSaver(Callback):
 
         self.scheduler = scheduler if hasattr(scheduler, 'get_last_lr') else None
 
+    #TODO document/remove dead code
         # if save_best:
         #     self.save_best = save_best # self.tracked_loss = val_loss
         #     self.best_loss = float('inf')
@@ -268,6 +270,7 @@ class LogSaver(Callback):
                 head += "," + m.name
         f.write(head + "\n")
 
+    #TODO document/remove dead code
     # def on_epoch_begin(self, epoch):
     #     self.crt_epoch = epoch+1
 
@@ -509,6 +512,7 @@ class LogPrinter(Callback):
                 template += ", {}".format(self.metrics[i])
             print(template)
 
+#TODO document/remove dead code
 # class Telegram(Callback):
 #     """
 #     Send message when training finishes
@@ -599,6 +603,7 @@ class LRSchedulerPoly(Callback):
         self.exponent = exponent
         self.optimizer = optimizer
 
+    #TODO document/remove dead code
     # def get_last_lr(self):
     #     return self.optimizer.param_groups[0]['lr']
     
@@ -610,7 +615,7 @@ class LRSchedulerPoly(Callback):
         self.optimizer.param_groups[0]['lr'] = self.initial_lr * (1 - epoch / self.max_epochs)**self.exponent
         print("Current learning rate: {}".format(self.optimizer.param_groups[0]['lr']))
 
-
+#TODO document/remove dead code
 # class LRSchedulerCosine(Callback):
 #     """
 #     Multi-step scheduler only for now
@@ -650,7 +655,7 @@ class ForceFGScheduler(Callback):
         self.min_rate = min_rate
         self.max_epochs = max_epochs
         self.exponent = exponent
-
+    #TODO document/remove dead code
     # def on_train_begin(self, epoch=None):
     #     self.dataloader.dataset.set_fg_rate(self.initial_rate)
     #     print("Current foreground rate: {}".format(self.initial_rate))
@@ -717,7 +722,7 @@ class GlobalScaleScheduler(Callback):
         self.min_rate = min_rate
         self.max_epochs = max_epochs
         self.exponent = exponent
-
+    #TODO document/remove dead code
     # def on_train_begin(self, epoch=None):
     #     self.dataloader.dataset.set_global_crop(self.initial_rate)
     #     print("Current global crop scale: {}".format(self.initial_rate))
@@ -752,7 +757,7 @@ class WeightDecayScheduler(Callback):
         self.nb_epochs = nb_epochs
         self.use_poly = use_poly 
         self.exponent = exponent
-
+    #TODO document/remove dead code
     # def on_train_begin(self, epoch=None):
     #     self.optimizer.param_groups[0]["weight_decay"] = self.initial_wd
     #     print("Current weight decay:", self.optimizer.param_groups[0]["weight_decay"] )
@@ -800,6 +805,7 @@ class MomentumScheduler(Callback):
                 self.crt_momentum = self.final_momentum
             else:
                 self.crt_momentum = self.initial_momentum + (self.final_momentum - self.initial_momentum) * epoch / self.nb_epochs
+        #TODO document/remove dead code
         # elif self.mode=='mix': # linear increase and then an exponential increase
         #     if epoch > self.nb_epochs:
         #         self.crt_momentum = self.final_momentum

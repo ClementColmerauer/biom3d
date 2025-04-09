@@ -66,6 +66,7 @@ class Logger(object):
     def flush(self):
         pass   
 
+#TODO document/remove dead code
 # class ErrorLogger(object):
 #     def __init__(self, filename):
 #         self.terminal = sys.stderr
@@ -427,6 +428,7 @@ class Builder:
                 nb_epochs=50,
                 mode='linear',
                 
+                #TODO document/remove dead code
                 # initial_momentum=self.config.INITIAL_MOMENTUM,
                 # final_momentum=1.0,
                 # nb_epochs=self.config.NB_EPOCHS,
@@ -515,6 +517,7 @@ class Builder:
                 every_batch=10)
         clbk_dict["log_printer"] = self.clbk_logprinter
         
+        #TODO document/remove dead code
         # [DEPRECATED]
         # self.clbk_telegram = clbk.Telegram(
         #         loss=self.loss_fn,
@@ -610,6 +613,7 @@ class Builder:
             self.callbacks.on_epoch_end(epoch)
         self.callbacks.on_train_end(self.config.NB_EPOCHS)
     
+    #TODO document/remove dead code
     # def main_ddp(self, rank, world_size): # TODO: use DDP...
     #     setup_ddp(rank, world_size)
 
@@ -739,6 +743,7 @@ class Builder:
         if not os.path.isdir(dir_out):
             os.makedirs(dir_out, exist_ok=True)
         
+        #TODO document/remove dead code
         # remove extension
         # fnames_out = [f[:f.rfind('.')] for f in sorted(os.listdir(dir_in))]
         # fnames_out = [os.path.basename(f).split('.')[0] for f in sorted(os.listdir(dir_in))]
@@ -779,6 +784,7 @@ class Builder:
         self.log_dir = os.path.join(path, 'log')
         self.model_dir = os.path.join(path, 'model')
 
+        #TODO document/remove dead code
         # self.log_path = os.path.join(self.log_dir, 'log.csv')
         # self.log_best_path = os.path.join(self.log_dir, 'log_best.csv')
 
@@ -811,6 +817,7 @@ class Builder:
         # load callbacks
         self.build_callbacks()
 
+        #TODO document/remove dead code
         # load the best loss for the model saver and the log saver
         # if os.path.exists(self.log_best_path):
         #     df_best = pd.read_csv(self.log_best_path)

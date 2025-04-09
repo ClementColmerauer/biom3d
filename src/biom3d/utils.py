@@ -217,6 +217,7 @@ def adaptive_imsave(img_path, img, img_meta={}):
     """
     extension = img_path[img_path.rfind('.'):].lower()
     if extension == ".tif" or extension == ".tiff":
+        #TODO document/remove dead code
         # if not np.all(spacing==(1.,1.,1.)):
         #     res = int(1e6) # default resolution is MICROMETERS
         #     tiff.imwrite(
@@ -393,6 +394,7 @@ def tif_get_spacing(path, res=1e-6):
     xres = (img_meta["XResolution"][1]/img_meta["XResolution"][0])*res
     yres = (img_meta["YResolution"][1]/img_meta["YResolution"][0])*res
     zres = float(img_meta["ImageDescription"]["spacing"])*res
+    #TODO document/remove dead code
     # max_dim = min([xres,yres,zres])
     # xres = max_dim / xres
     # yres = max_dim / yres

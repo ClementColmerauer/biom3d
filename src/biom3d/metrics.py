@@ -187,7 +187,7 @@ class IoU(Metric):
             targets = targets_oh[:,1:]
         else:
             inputs = inputs.sigmoid()
-
+        #TODO document/remove dead code
         # inputs = inputs.reshape(-1)
         # targets = targets.reshape(-1)       
         
@@ -397,7 +397,7 @@ class RobustCrossEntropyLoss(nn.CrossEntropyLoss):
             assert target.shape[1] == 1
             target = target[:, 0]
         return super().forward(input, target.long())
-
+#TODO document/remove dead code
 # class RobustCrossEntropyLoss(nn.NLLLoss):
 #     def __init__(self):
 #         super(RobustCrossEntropyLoss, self).__init__()

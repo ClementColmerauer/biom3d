@@ -92,6 +92,7 @@ def pred_seg_eval(log=pathlib.Path.home(), dir_in=pathlib.Path.home(), dir_out=p
                 fct=dice, 
                 in_path=list_abs[1][idx], 
                 tg_path=list_abs[0][idx], 
+                #TODO document/remove dead code
                 # num_classes=2, 
                 # single_class=-1,
                 num_classes=num_classes, 
@@ -120,6 +121,7 @@ if __name__=='__main__':
         "seg_multiple": pred_multiple,
         "seg_single": pred_single,
         "seg_eval_single": pred_seg_eval_single,
+        #TODO document/remove dead code
         # "seg_patch": pred_seg_patch,
         # "seg_patch_multi": pred_seg_patch_multi,
         # "single": pred_single,

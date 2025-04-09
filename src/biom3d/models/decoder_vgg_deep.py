@@ -16,6 +16,7 @@ from biom3d.utils import convert_num_pools
 # 3D Resnet decoder
 
 def _weights_init(m):
+    #TODO docment/remove dead code
     # classname = m.__class__.__name__
     # print(classname)
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv3d):
@@ -34,7 +35,7 @@ class DecoderBlock(nn.Module):
         ):
 
         super(DecoderBlock, self).__init__()
-
+        #TODO docment/remove dead code
         # if option == 'A': 
         #     self.up = nn.Upsample(scale_factor=2, mode='trilinear') # use bilinear but can be changed...
         # elif option == 'B':
@@ -51,6 +52,7 @@ class DecoderBlock(nn.Module):
         low=x[0]
         high = x[1]
         low = self.up(low)
+        #TODO docment/remove dead code
         # print("low",low.shape)
         # print("high",high.shape)
         out = torch.cat([low,high],dim=1)
@@ -102,6 +104,7 @@ class VGGDecoder(nn.Module):
         # if the encoder strides are flipped, the decoder strides are not
         if not flip_strides: self.strides = np.flip(self.strides, axis=0).tolist()
 
+        #TODO docment/remove dead code
         # max_pool = max(num_pools)
         # strides = []
         # for i in range(len(num_pools)):
@@ -163,9 +166,6 @@ class VGGDecoder(nn.Module):
         deep_out = []
         out = x[-1]
 
-        for e in x:
-            print(e.shape)
-        print(self.convs)
         
         '''for i in range(len(self.layers)):
             inputs = x[-1] if i==0 else out
@@ -183,15 +183,12 @@ class VGGDecoder(nn.Module):
         i = 0 
         for l,c in zip(self.layers,self.convs):
             inputs = out
-            print(l)
-            #test = torch.jit.annotate(List[torch.Tensor])
-            #print(test)
             test= torch.jit.annotate(List[torch.Tensor], [inputs, x[-2 - i]])
-            out = l[0](test) # si ça marche pas c'est surement à cause de cette ligne
-
+            out = l[0](test) #Use DecoderCode upscaler to adapt tensor
 
             if i>=2 and self.use_deep: # deep supervision
                 tmp = c(out)
+                #TODO docment/remove dead code
                 # scale_factor = np.array(self.strides)[i+1:].prod(axis=0).tolist()
                 # deep_out += [F.interpolate(tmp, scale_factor=scale_factor, mode='trilinear')]
                 deep_out += [F.interpolate(tmp, size=x[0].shape[2:], mode='trilinear')]
