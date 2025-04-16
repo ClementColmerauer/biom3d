@@ -13,7 +13,7 @@ Can be caused by:
 ## ValueError : Images don't have the same shape :
 Happen when images you want to train or predict on don't all have the same dimensions. Can be cause by opening the image with Napari and transfering it to Fiji. You can either reimport reimport the images or remove the problematics ones.
 
-## [Error] Invalid image shape (x,_, _, _). Expected to have 1 numbers of channel at 0 channel axis.
+## [Error] Invalid image shape (x,_, _, ...). Expected to have 1 numbers of channel at 0 channel axis.
 Can be caused by:
 * One of your image hasn't the number of channel the model has been trained on, you can fix it by removing problematic image.
 * The model didn't registered the number of channel it work with. If you are sure the problem isn't from the dataset (see above) you can add to the config.yaml (in log) the line "num_channels: x" to the kwarg part of the PREPROCESSOR part :
@@ -25,5 +25,5 @@ Can be caused by:
             clipping_bounds: *id005
             intensity_moments: *id006
             channel_axis: 0
-            num_channels: 1 <-
+            num_channels: 1 <- Here
 ```

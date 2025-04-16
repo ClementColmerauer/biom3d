@@ -15,7 +15,7 @@ To use the local version of Biom3d, meaning that computations will be executed o
 ## Application Programming Interface
 
 **Requirements**:
-* A NVidia GPUs with at least 10Go of VRAM (at least a Geforce GTX 1080), smaller Graphic card might also work but some reconfiguration might be required (such as the patch size). We tested the following graphic cards: T4, RTX 2080Ti, RTX 3090, P100, V100, A100 and Quadro T1000 (with patch size reduction). 
+* A NVidia GPUs with at least 10Go of VRAM (at least a Geforce GTX 1080), smaller Graphic card might also work but some reconfiguration might be required (such as the patch size). We tested the following graphic cards: T4, RTX 2080Ti, RTX 3090, P100, V100, A100 and Quadro T1000 (with patch size reduction). You can still run biom3d on CPU but it is not recommended as it will be significantly slower.
 * Windows 10 or Ubuntu 18.04 (other OS have not been tested)
 
 There are two types of installations:
@@ -44,6 +44,12 @@ conda activate b3d
 conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
 ```
 You can also use the pip command if conda isn't available.
+
+You can know your CUDA and CuDNN versions with :
+```
+    conda list cudatoolkit
+    conda list cudnn
+```
 
 * Install biom3d:
 
