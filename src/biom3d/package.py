@@ -8,6 +8,7 @@ from biom3d import register
 from biom3d import utils
 from biom3d.builder import Builder, read_config
 from biom3d.preprocess import seg_preprocessor
+from biom3d.predictors import seg_postprocessing
 
 class Loader(Builder):
     def __init__(self, path):                
@@ -31,12 +32,10 @@ class Loader(Builder):
         print("Loading model from", ckpt_path)
         self.model = read_config(self.config.MODEL, register.models)
         print(self.model.load_state_dict(ckpt['model'], strict=False))
-        print(self.model)
 
-   
 
 #Based on https://github.com/bioimage-io/core-bioimage-io-python/blob/53dfc45cf23351da61e8b22d100d77fb54c540e6/example/model_creation.ipynb
-def packagev0x5BIZ(path_to_model,test_image,output = None,best = False,axes=None): 
+def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None): 
     loader = Loader(path_to_model)
 
     folder = os.path.join(output, loader.config.DESC)
@@ -53,7 +52,7 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,best = False,axes=None
     print("Test input image has been saved as test-input.npy")
 
     # Saving weights
-    model = loader.model
+    model = ExportModel(loader.model)
     # TODO: save normal weight too
     # TODO: create a toTorchSript function
     model = torch.jit.script(model)
@@ -84,8 +83,8 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,best = False,axes=None
         tmp[0] = 'c'
         axes_order = ''.join(tmp)    
     # Prediction
-    with torch.no_grad():
-        output = model(torch.from_numpy(img_process)).numpy()
+    """with torch.no_grad():
+        output = model(torch.from_numpy(img_process)).numpy()"""
 
     # Postprocessing
     # TODO : if keep_big/biggest or force_softmax or use_softmax are used warning or error

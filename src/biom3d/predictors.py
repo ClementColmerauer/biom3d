@@ -263,6 +263,7 @@ def seg_predict_patch(
     num_workers=4,
     enable_autocast=True, 
     keep_biggest_only=False,
+    silent_mode = False, 
     ):
     """
     *Segmentation Predictor V1-TorchIO*
@@ -297,6 +298,8 @@ def seg_predict_patch(
         Enable mixed precision.
     keep_biggest_only : bool, default=False
         If True, keep only the biggest volume in the output.
+    silent_mode : bool, default=False
+        If True, doesn't print anything
 
     Returns
     -------
@@ -306,7 +309,7 @@ def seg_predict_patch(
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     enable_autocast = torch.cuda.is_available() and enable_autocast # tmp, autocast seems to work only with gpu for now... 
-    print('AMP {}'.format('enabled' if enable_autocast else 'disabled'))
+    if not silent_mode : print('AMP {}'.format('enabled' if enable_autocast else 'disabled'))
 
     img_loader = LoadImgPatch(
         img_path,
@@ -358,21 +361,21 @@ def seg_predict_patch(
 
             pred_aggr.add_batch(pred, patch[tio.LOCATION])
         
-        print("Prediction done!")
+        if not silent_mode : print("Prediction done!")
 
-        print("Aggregation...")
+        if not silent_mode : print("Aggregation...")
         logit = pred_aggr.get_output_tensor().float()
-        print("Aggregation done!")
+        if not silent_mode : print("Aggregation done!")
     
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     # post-processing:
-    print("Post-processing...")
+    if not silent_mode : print("Post-processing...")
     logit = img_loader.post_process(logit)
 
     if return_logit: 
-        print("Post-processing done!")
+        if not silent_mode : print("Post-processing done!")
         return logit
 
     if use_softmax:
@@ -399,8 +402,8 @@ def seg_predict_patch(
             out = np.array(tmp)
 
     out = out.astype(np.byte) 
-    print("Post-processing done!")
-    print("Output shape:",out.shape)
+    if not silent_mode : print("Post-processing done!")
+    if not silent_mode : print("Output shape:",out.shape)
     return out
 
 #---------------------------------------------------------------------------
