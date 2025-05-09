@@ -678,7 +678,6 @@ class Builder:
         if not os.path.isdir(dir_out):
             os.makedirs(dir_out, exist_ok=True)
         
-        #TODO document/remove dead code
         # remove extension
         fnames_out = sorted(os.listdir(dir_in))
 

@@ -3,13 +3,11 @@ from enum import Enum
 import os
 import torch
 import numpy as np
-import SimpleITK as sitk
 
 from biom3d import register
 from biom3d import utils
 from biom3d.builder import Builder, read_config
-from biom3d.preprocess import Preprocessing
-import biom3d.predictors as pred
+from biom3d.preprocess import seg_preprocessor
 
 class Loader(Builder):
     def __init__(self, path):                
@@ -33,38 +31,64 @@ class Loader(Builder):
         print("Loading model from", ckpt_path)
         self.model = read_config(self.config.MODEL, register.models)
         print(self.model.load_state_dict(ckpt['model'], strict=False))
-                
+        print(self.model)
+
+   
 
 #Based on https://github.com/bioimage-io/core-bioimage-io-python/blob/53dfc45cf23351da61e8b22d100d77fb54c540e6/example/model_creation.ipynb
-def packagev0x5BIZ(path_to_model,test_image,output = None,best = False): 
+def packagev0x5BIZ(path_to_model,test_image,output = None,best = False,axes=None): 
     loader = Loader(path_to_model)
 
     folder = os.path.join(output, loader.config.DESC)
     os.makedirs(folder, exist_ok=True)
     print("Folder created at " + folder)
 
+    # TODO: Alter code to accepts multiple test image ?
+    # Saving test image
     img, metadata = utils.adaptive_imread(test_image)
-    #TODO ajouter preprocess de l'image pour compatibilité (ou voir avec predictor ?)
-    #img = img.astype(np.float32)
-    #print(img)
-    np.save(os.path.join(folder, 'test-input.npy'), img)
+    if axes != None:
+        metadata["axes"] = axes
+    assert "axes" in metadata, "Axes order can't be found, you can specify it by using the --axes argument" 
+    np.save(os.path.join(folder, 'test-input.npy'), img.astype(np.float32))
     print("Test input image has been saved as test-input.npy")
 
+    # Saving weights
     model = loader.model
-    #print(model,type(model))
-
+    # TODO: save normal weight too
+    # TODO: create a toTorchSript function
     model = torch.jit.script(model)
-    #traced_script_module = torch.jit.trace(model, img)
-    model.save(os.path.join(folder, "weights.pt"))
-    print("Model has been saved as weights.pt")
-    """img_tensor = torch.from_numpy(img)
-    #print(img_tensor, type(img_tensor))
-    output = pred.seg_predict(os.path.join(folder, 'test-input.npy'),model)"""
-    #output = pred.seg_predict_patch(os.path.join(folder, 'test-input.npy'),model, patch_size=loader.config.PATCH_SIZE)
-    """with torch.no_grad():
-        output = model(torch.from_numpy(img)).numpy()"""
-   # np.save(os.path.join(folder, 'test-output.npy'), output)
-    #print("Test output image has been created and saved as test-output.npy")
+    model.save(os.path.join(folder, "weights-torchscript.pt"))
+    print("Torchscript model has been saved as weights-torchscript.pt")
+    
+    # Preprocessing
+    preprocessor = loader.config["PREPROCESSOR"]["kwargs"]
+    # TODO replace with a more flexible approach, this work only because their is only one preprocessing function
+    img_process,img_process_meta = seg_preprocessor(
+                                            img,metadata,
+                                            median_spacing=preprocessor['median_spacing'],
+                                            clipping_bounds=preprocessor['clipping_bounds'],
+                                            intensity_moments=preprocessor['intensity_moments'],
+                                            channel_axis=preprocessor['channel_axis'],
+                                            num_channels=preprocessor['num_channels'],
+                                            )
+
+    # Axes order modification by preprocessing
+    axes_order = str.lower(metadata["axes"])
+    axes_order = axes_order.replace('t', '') # Remove time dimension if exist
+    if len(img.shape)==3:
+        axes_order = axes_order.replace('c', '') #Channel dimension has been ignored by numpy and will be placed in first place by preprocess
+        axes_order = 'c'+ axes_order
+    elif len(img.shape)==4: # Channel axes will be swaped in first place by preprocessing
+        tmp = list(axes_order)
+        tmp[loader.config["CHANNEL_AXIS"]] = tmp[0]
+        tmp[0] = 'c'
+        axes_order = ''.join(tmp)    
+    # Prediction
+    with torch.no_grad():
+        output = model(torch.from_numpy(img_process)).numpy()
+
+    # Postprocessing
+    # TODO : if keep_big/biggest or force_softmax or use_softmax are used warning or error
 
     """with open(os.path.join(folder, 'doc.md'), "w") as f:
         f.write("# My First Model\n")
@@ -94,6 +118,12 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,best = False):
         tags=["nucleus-segmentation"],  # the tags are used to make models more findable on the website
         cite=[{"text": "Gizmo et al.", "doi": "doi:10.1002/xyzacab123"}],)'''
 
+''' Emprunter a vhatgpt, a analyser
+# 7. Post-traitement (ex: argmax, seuil, etc.)
+output_post = (output > 0.5).astype(np.uint8)  # adapte selon ton cas
+
+# 8. Sauvegarde de la sortie
+np.save("my-model/test-output.npy", output_post)'''
 
     
 class Target(Enum ):    
@@ -107,6 +137,7 @@ if __name__=='__main__':
     parser.add_argument("-t", "--target", type=Target, default=Target.v0x5BIZ, choices=list(Target),help="Target image and version")
     parser.add_argument("-o", "--output_dir", type=str, default="./",help="Directory where you want your model, will create a sub folder (default local directory)")
     parser.add_argument("-b", "--best", action = "store_true",help="Whether best model is used")
+    parser.add_argument("-a", "--axes", type = str, default = None, help="Specified axes order for images")
     parser.add_argument("model_dir",help="Path to model directory")  
     parser.add_argument("test_image",help="Path to test image (must be tif or nii.gz)")  
     args = parser.parse_args()

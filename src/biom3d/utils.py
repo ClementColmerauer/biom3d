@@ -151,9 +151,10 @@ def sitk_imread(img_path, return_spacing=True, return_origin=False, return_direc
     image reader for nii.gz files
     """
     img = sitk.ReadImage(img_path)
-    img_np = sitk.GetArrayFromImage(img)
+    img_np = sitk.GetArrayFromImage(img) #Reverse the axis order
     dim = img.GetDimension()
 
+    # TODO :check if file is in xyzt by removing smallest dimension instead of last ?
     spacing = np.array(img.GetSpacing())
     origin = np.array(img.GetOrigin())
     direction = np.array(img.GetDirection())
@@ -163,7 +164,7 @@ def sitk_imread(img_path, return_spacing=True, return_origin=False, return_direc
         direction = direction.reshape(4,4)[:-1, :-1].reshape(-1)
     elif dim != 4 and dim != 3: 
         raise RuntimeError("Unexpected dimensionality: %d of file %s, cannot split" % (dim, img_path))
-    return img_np, {"spacing": spacing, "origin": origin, "direction": direction}
+    return img_np, {"spacing": spacing, "origin": origin, "direction": direction, "axes":"XYZ"} #not ZYX because we want the axes of base image
 
 def adaptive_imread(img_path):
     """
@@ -173,15 +174,7 @@ def adaptive_imread(img_path):
     """
     extension = img_path[img_path.rfind('.'):].lower()
     if extension == ".tif" or extension == ".tiff":
-        try: 
-            img, img_meta = tif_read_imagej(img_path)  # try loading ImageJ metadata for tif files
-            return img, img_meta
-        except:   
-            img_meta = {}    
-            try: img_meta["spacing"] = tif_get_spacing(img_path)
-            except: img_meta["spacing"] = []
-    
-            return io.imread(img_path), img_meta 
+        return tif_read_imagej(img_path)  # try loading ImageJ metadata for tif files
     elif extension == ".npy":
         return np.load(img_path), {}
     else:
@@ -236,7 +229,6 @@ def adaptive_imsave(img_path, img, img_meta={}):
 
 # ----------------------------------------------------------------------------
 # tif metadata reader and writer
-
 def tif_read_imagej(img_path, axes_order='CZYX'):
     """Read tif file metadata stored in a ImageJ format.
     adapted from: https://forum.image.sc/t/python-copy-all-metadata-from-one-multipage-tif-to-another/26597/8
@@ -257,42 +249,48 @@ def tif_read_imagej(img_path, axes_order='CZYX'):
     """
 
     with tiff.TiffFile(img_path) as tif:
-        assert tif.is_imagej
+        assert tif.is_imagej, "The given .tif (or .tiff) is not an imageJ file"
 
         # store img_meta
         img_meta = {}
 
-        # get image resolution from TIFF tags
-        tags = tif.pages[0].tags
-        x_resolution = tags['XResolution'].value
-        y_resolution = tags['YResolution'].value
-        resolution_unit = tags['ResolutionUnit'].value
-        
-        img_meta["resolution"] = (x_resolution, y_resolution, resolution_unit)
+        try:
+            # get image resolution from TIFF tags
+            tags = tif.pages[0].tags
+            x_resolution = tags['XResolution'].value
+            y_resolution = tags['YResolution'].value
+            resolution_unit = tags['ResolutionUnit'].value        
+            img_meta["resolution"] = (x_resolution, y_resolution, resolution_unit)
+        except : pass
 
-        # parse ImageJ metadata from the ImageDescription tag
-        ij_description = tags['ImageDescription'].value
-        ij_description_metadata = tiff.tifffile.imagej_description_metadata(ij_description)
-        # remove conflicting entries from the ImageJ metadata
-        ij_description_metadata = {k: v for k, v in ij_description_metadata.items()
-                                   if k not in 'ImageJ images channels slices frames'}
-
-        img_meta["description"] = ij_description_metadata
+        try :
+            # parse ImageJ metadata from the ImageDescription tag
+            ij_description = tags['ImageDescription'].value
+            ij_description_metadata = tiff.tifffile.imagej_description_metadata(ij_description)
+            # remove conflicting entries from the ImageJ metadata
+            ij_description_metadata = {k: v for k, v in ij_description_metadata.items()
+                                    if k not in 'ImageJ images channels slices frames'}
+            img_meta["description"] = ij_description_metadata
+        except : pass
         
-        # compute spacing
-        xres = (x_resolution[1]/x_resolution[0])
-        yres = (y_resolution[1]/y_resolution[0])
-        zres = float(ij_description_metadata["spacing"])
-        
-        img_meta["spacing"] = (xres, yres, zres)
+        try :
+            # compute spacing
+            xres = (x_resolution[1]/x_resolution[0])
+            yres = (y_resolution[1]/y_resolution[0])
+            zres = float(ij_description_metadata["spacing"])
+            
+            img_meta["spacing"] = (xres, yres, zres)
+        except : img_meta["spacing"] = []
 
-        # read the whole image stack and get the axes order
-        series = tif.series[0]
-        img = series.asarray()
+        try :
+            # read the whole image stack and get the axes order
+            series = tif.series[0]
+            img = series.asarray()
 
-        img = tiff.tifffile.transpose_axes(img, series.axes, axes_order)
-        
-        img_meta["axes"] = axes_order
+            img = tiff.tifffile.transpose_axes(img, series.axes, axes_order)
+            
+            img_meta["axes"] = axes_order
+        except : pass
     
     return img, img_meta
 
