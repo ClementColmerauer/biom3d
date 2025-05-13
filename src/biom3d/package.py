@@ -3,9 +3,12 @@ from enum import Enum
 import os
 import torch
 import numpy as np
+import torch.nn.functional as F
+from typing import List,Tuple
 
 from biom3d import register
 from biom3d import utils
+from biom3d.predictors import seg_predict_patch_2
 from biom3d.builder import Builder, read_config
 from biom3d.preprocess import seg_preprocessor
 from biom3d.predictors import seg_postprocessing
@@ -33,10 +36,149 @@ class Loader(Builder):
         self.model = read_config(self.config.MODEL, register.models)
         print(self.model.load_state_dict(ckpt['model'], strict=False))
 
+class ModelExport(torch.nn.Module):
+
+    def __init__(self,model,original_shape,patch_size:list,num_workers:int = 4,device = 'cpu',tta= False,enable_autocast = True):
+        super().__init__()
+        self.model = model
+        self.device = device
+        self.patch_size = patch_size
+        self.num_workers = num_workers
+        self.enable_autocast = enable_autocast
+        self.tta = tta
+        self.original_shape = original_shape
+        self.model.to(self.device).eval()
+        self.model.cpu()
+
+    def grid_patching(self,img:torch.Tensor, patch_size:torch.Tensor, patch_overlap:torch.Tensor) :
+        _, H, W, D = img.shape
+        dims = [D, W, H]  # Pad order for F.pad: D, W, H
+        pad:list[int] = []
+
+        stride = torch.sub(patch_size,patch_overlap)
+
+        for dim, size, s in zip(dims, patch_size.flip(0), stride.flip(0)):
+            remainder = (dim - size) % s
+            pad_amt = (s - remainder) %s
+            pad.extend([0, int(pad_amt)])  # Pad only after (right, bottom, etc.)
+
+        if any(pad):
+            img = F.pad(img, pad, mode='constant')
+
+        _, H, W, D = img.shape
+
+        # Torchscript compatibility
+        patch_size_list = [int(x) for x in patch_size]
+        stride_list = [int(x) for x in stride]
+        steps:list[list[int]] = []
+        for i in range(3):  # Image are in 3d
+            dim = (H, W, D)[i]
+            ps = patch_size_list[i]
+            st = stride_list[i]
+            steps.append(list(range(0, dim - ps + 1, st)))
+
+        patch_location:List[Tuple[int, int, int, int, int, int]] = []
+        patches:List[torch.Tensor]= []
+        for i in steps[0]:  # H
+            for j in steps[1]:  # W
+                for k in steps[2]:  # D
+                    patch = img[:, i:i+patch_size[0], j:j+patch_size[1], k:k+patch_size[2]]
+                    location = (i, j, k, int(patch_size[0]), int(patch_size[1]), int(patch_size[2]))
+                    patches.append(patch)
+                    patch_location.append(location)
+
+
+        return patches, patch_location,img.shape
+    
+    def get_hann_window(self,patch_size):
+        patch_size_list = [int(x) for x in patch_size]
+        hann_1d = [torch.hann_window(s, periodic=False) for s in patch_size_list]
+        hann_3d = torch.einsum('i,j,k->ijk', hann_1d[0], hann_1d[1], hann_1d[2])
+        return hann_3d.unsqueeze(0).unsqueeze(0) 
+    
+    def aggregate_patches(self,patch_preds:List[torch.Tensor],patch_loc_preds:List[Tuple[int,int,int,int,int,int]], output_shape:List[int], patch_size:torch.Tensor, device:str='cpu'):
+        C, H, W, D = output_shape
+        if isinstance(device, torch.Tensor):
+            device = device.device 
+        elif isinstance(device, str):
+            device = torch.device(device)
+        aggregated = torch.zeros((C, H, W, D), device=device)
+        weight_map = torch.zeros((C, H, W, D), device=device)
+
+        window = self.get_hann_window(patch_size).to(device)
+        for i in range(len(patch_preds)):
+            patch = patch_preds[i]
+            loc = patch_loc_preds[i]
+            i, j, k, ph, pw, pd = loc
+            weighted_patch = patch * window  
+
+            if weighted_patch.dim() == 5:
+                weighted_patch = weighted_patch.squeeze(0)
+
+            aggregated[:, i:i+ph, j:j+pw, k:k+pd] += weighted_patch.squeeze(0)
+            weight_map[:, i:i+ph, j:j+pw, k:k+pd] += window.squeeze(0)
+
+        weight_map = torch.clamp(weight_map, min=1e-6)
+        return aggregated / weight_map
+
+    #@torch.jit.script
+    def forward(self,img:torch.Tensor):
+        overlap = 0.5
+        patch_size = torch.tensor(self.patch_size,dtype=torch.int)
+        original_shape = torch.squeeze(torch.tensor(self.original_shape),dim=0)
+        patch_overlap = torch.maximum(torch.mul(patch_size,overlap),torch.sub(patch_size, torch.tensor(img.shape[3:])))
+        patch_overlap = torch.div(torch.ceil(torch.mul(patch_overlap,overlap)),overlap).to(torch.int)
+        patch_overlap = torch.minimum(patch_overlap,torch.sub(patch_size,1))
+
+        patches, patches_location, padded_shape = self.grid_patching(img, patch_size,patch_overlap)
+
+        with torch.no_grad():
+            pred_aggr = []
+            patch_loc_preds:List[Tuple[int, int, int, int, int, int]] = []
+            batch_size=2    
+            
+            for i in range(0, len(patches), batch_size):
+                batch_patches = patches[i:i + batch_size] 
+                batch_locations = patches_location[i:i + batch_size]
+                X = torch.stack(batch_patches, dim=0)
+                if self.device == 'cpu':
+                    X = X.cuda()
+                
+                if self.tta: # test time augmentation: flip around each axis
+                    with torch.autocast(self.device, enabled=self.enable_autocast):
+                        pred=self.model(X).cpu()
+                    
+                    # flipping tta
+                    dims = [[2],[3],[4],[3,2],[4,2],[4,3],[4,3,2]]
+                    for d in dims :
+                        X_flip = torch.flip(X,dims=d)
+
+                        with torch.autocast(self.device, enabled=self.enable_autocast):
+                            pred_flip = self.model(X_flip)
+                        pred += torch.flip(pred_flip, dims=d).cpu()
+                        
+                        
+                    
+                    pred = pred/(len(dims)+1)
+                else:
+                    with torch.autocast(self.device, enabled=self.enable_autocast):
+                        pred=self.model(X).cpu()
+
+                for j in range(len(pred)):
+                    pred_aggr.append(pred[j])
+                    patch_loc_preds.append(batch_locations[j])
+
+
+        logit = self.aggregate_patches(pred_aggr,patch_loc_preds,padded_shape,patch_size,device=self.device).to(torch.float)
+
+        # TODO : resize3d
+
+        return logit
 
 #Based on https://github.com/bioimage-io/core-bioimage-io-python/blob/53dfc45cf23351da61e8b22d100d77fb54c540e6/example/model_creation.ipynb
 def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None): 
     loader = Loader(path_to_model)
+    
 
     folder = os.path.join(output, loader.config.DESC)
     os.makedirs(folder, exist_ok=True)
@@ -52,7 +194,7 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None):
     print("Test input image has been saved as test-input.npy")
 
     # Saving weights
-    model = ExportModel(loader.model)
+    model = ModelExport(loader.model,img.shape,loader.config["PREDICTOR"]["kwargs"]["patch_size"],tta=True)
     # TODO: save normal weight too
     # TODO: create a toTorchSript function
     model = torch.jit.script(model)
@@ -70,8 +212,8 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None):
                                             channel_axis=preprocessor['channel_axis'],
                                             num_channels=preprocessor['num_channels'],
                                             )
-
-    # Axes order modification by preprocessing
+    
+    # Axes order modification by preprocessing TODO move it in preprocessor
     axes_order = str.lower(metadata["axes"])
     axes_order = axes_order.replace('t', '') # Remove time dimension if exist
     if len(img.shape)==3:
@@ -81,10 +223,13 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None):
         tmp = list(axes_order)
         tmp[loader.config["CHANNEL_AXIS"]] = tmp[0]
         tmp[0] = 'c'
-        axes_order = ''.join(tmp)    
+        axes_order = ''.join(tmp) 
+
     # Prediction
-    """with torch.no_grad():
-        output = model(torch.from_numpy(img_process)).numpy()"""
+    output_w = seg_predict_patch_2(img_process,img.shape,loader.model,loader.config["PATCH_SIZE"],tta=True)
+    output = model(img_process)
+
+    assert torch.equal(output,torch.from_numpy(output_w))
 
     # Postprocessing
     # TODO : if keep_big/biggest or force_softmax or use_softmax are used warning or error
@@ -117,13 +262,6 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None):
         tags=["nucleus-segmentation"],  # the tags are used to make models more findable on the website
         cite=[{"text": "Gizmo et al.", "doi": "doi:10.1002/xyzacab123"}],)'''
 
-''' Emprunter a vhatgpt, a analyser
-# 7. Post-traitement (ex: argmax, seuil, etc.)
-output_post = (output > 0.5).astype(np.uint8)  # adapte selon ton cas
-
-# 8. Sauvegarde de la sortie
-np.save("my-model/test-output.npy", output_post)'''
-
     
 class Target(Enum ):    
     v0x5BIZ = "v0.5BioImageZoo"
@@ -142,4 +280,4 @@ if __name__=='__main__':
     args = parser.parse_args()
     
     if(args.target == Target.v0x5BIZ):
-        packagev0x5BIZ(args.model_dir,args.test_image,args.output_dir,args.best)
+        packagev0x5BIZ(args.model_dir,args.test_image,args.output_dir)
