@@ -151,10 +151,9 @@ def sitk_imread(img_path, return_spacing=True, return_origin=False, return_direc
     image reader for nii.gz files
     """
     img = sitk.ReadImage(img_path)
-    img_np = sitk.GetArrayFromImage(img) #Reverse the axis order
+    img_np = sitk.GetArrayFromImage(img)
     dim = img.GetDimension()
 
-    # TODO :check if file is in xyzt by removing smallest dimension instead of last ?
     spacing = np.array(img.GetSpacing())
     origin = np.array(img.GetOrigin())
     direction = np.array(img.GetDirection())
@@ -164,7 +163,7 @@ def sitk_imread(img_path, return_spacing=True, return_origin=False, return_direc
         direction = direction.reshape(4,4)[:-1, :-1].reshape(-1)
     elif dim != 4 and dim != 3: 
         raise RuntimeError("Unexpected dimensionality: %d of file %s, cannot split" % (dim, img_path))
-    return img_np, {"spacing": spacing, "origin": origin, "direction": direction, "axes":"XYZ"} #not ZYX because we want the axes of base image
+    return img_np, {"spacing": spacing, "origin": origin, "direction": direction}
 
 def adaptive_imread(img_path):
     """
@@ -174,7 +173,16 @@ def adaptive_imread(img_path):
     """
     extension = img_path[img_path.rfind('.'):].lower()
     if extension == ".tif" or extension == ".tiff":
-        return tif_read_imagej(img_path)  # try loading ImageJ metadata for tif files
+        try:
+            return tif_read_imagej(img_path)  # try loading ImageJ metadata for tif files
+        except AssertionError :
+            img_meta = {}
+            try :
+                meta = tif_read_meta(img_path)
+                img_meta["axes"] = meta['IJMetadata']['DimensionOrder']
+                img_meta["spacing"] = tif_get_spacing(img_path)
+            except : img_meta["spacing"]=[]
+            return io.imread(img_path), img_meta 
     elif extension == ".npy":
         return np.load(img_path), {}
     else:

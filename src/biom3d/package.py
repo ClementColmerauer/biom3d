@@ -38,139 +38,202 @@ class Loader(Builder):
 
 class ModelExport(torch.nn.Module):
 
-    def __init__(self,model,original_shape,patch_size:list,num_workers:int = 4,device = 'cpu',tta= False,enable_autocast = True):
+    def __init__(self,model,original_shape,axes_order:str,patch_size:list,num_workers:int = 4,device = 'cpu',tta= False): #enable_autocast is irrelevant since bioimage don't use it
         super().__init__()
         self.model = model
         self.device = device
         self.patch_size = patch_size
         self.num_workers = num_workers
-        self.enable_autocast = enable_autocast
         self.tta = tta
+        self.axes_order = axes_order
         self.original_shape = original_shape
-        self.model.to(self.device).eval()
-        self.model.cpu()
-
-    def grid_patching(self,img:torch.Tensor, patch_size:torch.Tensor, patch_overlap:torch.Tensor) :
-        _, H, W, D = img.shape
-        dims = [D, W, H]  # Pad order for F.pad: D, W, H
-        pad:list[int] = []
-
-        stride = torch.sub(patch_size,patch_overlap)
-
-        for dim, size, s in zip(dims, patch_size.flip(0), stride.flip(0)):
-            remainder = (dim - size) % s
-            pad_amt = (s - remainder) %s
-            pad.extend([0, int(pad_amt)])  # Pad only after (right, bottom, etc.)
-
-        if any(pad):
-            img = F.pad(img, pad, mode='constant')
-
-        _, H, W, D = img.shape
-
-        # Torchscript compatibility
-        patch_size_list = [int(x) for x in patch_size]
-        stride_list = [int(x) for x in stride]
-        steps:list[list[int]] = []
-        for i in range(3):  # Image are in 3d
-            dim = (H, W, D)[i]
-            ps = patch_size_list[i]
-            st = stride_list[i]
-            steps.append(list(range(0, dim - ps + 1, st)))
-
-        patch_location:List[Tuple[int, int, int, int, int, int]] = []
-        patches:List[torch.Tensor]= []
-        for i in steps[0]:  # H
-            for j in steps[1]:  # W
-                for k in steps[2]:  # D
-                    patch = img[:, i:i+patch_size[0], j:j+patch_size[1], k:k+patch_size[2]]
-                    location = (i, j, k, int(patch_size[0]), int(patch_size[1]), int(patch_size[2]))
-                    patches.append(patch)
-                    patch_location.append(location)
+        self.model = model.to(self.device).eval()
+        self.model.to(self.device)
 
 
-        return patches, patch_location,img.shape
-    
-    def get_hann_window(self,patch_size):
-        patch_size_list = [int(x) for x in patch_size]
-        hann_1d = [torch.hann_window(s, periodic=False) for s in patch_size_list]
-        hann_3d = torch.einsum('i,j,k->ijk', hann_1d[0], hann_1d[1], hann_1d[2])
-        return hann_3d.unsqueeze(0).unsqueeze(0) 
-    
-    def aggregate_patches(self,patch_preds:List[torch.Tensor],patch_loc_preds:List[Tuple[int,int,int,int,int,int]], output_shape:List[int], patch_size:torch.Tensor, device:str='cpu'):
-        C, H, W, D = output_shape
-        if isinstance(device, torch.Tensor):
-            device = device.device 
-        elif isinstance(device, str):
-            device = torch.device(device)
-        aggregated = torch.zeros((C, H, W, D), device=device)
-        weight_map = torch.zeros((C, H, W, D), device=device)
+    #Equivalent to (and translation of) torchio.GridSampler 
+    def grid_patching(
+        self,
+        img: torch.Tensor, 
+        patch_size: torch.Tensor, 
+        patch_overlap: torch.Tensor
+    ) -> Tuple[List[torch.Tensor], List[Tuple[int, int, int, int, int, int]], torch.Size]:
 
-        window = self.get_hann_window(patch_size).to(device)
+        def pad(img:torch.Tensor,patch_overlap:torch.Tensor)->torch.Tensor:
+            border = patch_overlap // 2
+            padding_tuple = (border[2].item(), border[2].item(),
+                     border[1].item(), border[1].item(),
+                     border[0].item(), border[0].item())
+
+            padded_img = torch.nn.functional.pad(img, padding_tuple, mode='constant', value=0)
+            
+            return padded_img
+            
+
+        def compute_location(img:torch.Tensor,patch_size:torch.Tensor, patch_overlap:torch.Tensor):
+            def lexsort_tensor(data: torch.Tensor) -> torch.Tensor:
+                indices = torch.arange(data.size(0))
+                for col in reversed(range(data.size(1))):
+                    keys = data[:, col]
+                    _, new_order = torch.sort(keys[indices], stable=True)
+                    indices = indices[new_order]     
+                sorted_data = data[indices]
+                output: List[Tuple[int, int, int, int, int, int]] = []
+                for i in range(sorted_data.size(0)):
+                    row = sorted_data[i]
+                    output.append((
+                        int(row[0]), int(row[1]), int(row[2]),
+                        int(row[3]), int(row[4]), int(row[5])
+                    ))
+                return output
+            indices = []
+            size = img.shape[-3:]
+            for i in range(len(size)):
+                im_size_dim = size[i]
+                patch_size_dim = patch_size[i].item()
+                patch_overlap_dim = patch_overlap[i].item()      
+                end = im_size_dim + 1 - patch_size_dim
+                step = patch_size_dim - patch_overlap_dim
+                indices_dim = list(range(0,end,step))
+                if indices_dim[-1] != im_size_dim - patch_size_dim: indices_dim.append(im_size_dim - patch_size_dim)
+                indices.append(indices_dim)
+            grid = torch.meshgrid(*[torch.tensor(dim, dtype=torch.int32) for dim in indices], indexing="xy")
+            grid = [m.flatten() for m in grid]
+            indices_ini = torch.stack(grid,dim=1)
+            indices_ini = torch.unique(indices_ini,dim=0)
+            indices_fin = indices_ini + patch_size
+            locations = torch.hstack((indices_ini,indices_fin))
+            return lexsort_tensor(locations)
+        def generate_patch(img:torch.Tensor,patch_size:torch.Tensor,patch_location:List[Tuple[int,int,int,int,int,int]]):
+            def crop(img:torch.Tensor, index_ini:Tuple[int,int,int],patch_size:torch.Tensor):
+                d0, h0, w0 = index_ini
+                pd, ph, pw = patch_size
+                d1 = d0 + pd
+                h1 = h0 + ph
+                w1 = w0 + pw
+                patch = img[:, d0:d1, h0:h1, w0:w1]
+                return patch
+            
+            patches = []
+            for l in patch_location:
+                index_ini = l[:3]
+                patches.append(crop(img,index_ini,patch_size))
+            return patches
+        img = pad(img,patch_overlap)
+        patch_location = compute_location(img,patch_size,patch_overlap)
+        patches = generate_patch(img,patch_size,patch_location)
+
+        return patches, patch_location, torch.tensor(img.shape)
+
+    #Equivalent to (and translation of) torchio GridAggregator
+    def aggregate_patches(self,patch_preds:List[torch.Tensor],patch_loc_preds:List[Tuple[int,int,int,int,int,int]], output_shape:torch.Tensor, patch_size:torch.Tensor, padded_size:Tuple[int,int,int,int],device:str='cpu'):
+        def get_hann_window(patch_size:torch.Tensor):
+            hann_window = torch.ones(1)
+            for i in range(3):
+                size = patch_size[i]
+                window_1d = torch.hann_window(size + 2, periodic=False)[1:-1]
+                shape = [1, 1, 1]
+                shape[i] = size
+                window_1d = window_1d.view(*shape)
+                hann_window = hann_window * window_1d
+            return hann_window
+        def add_patch_hann(
+            output_tensor: torch.Tensor,
+            avgmask_tensor: torch.Tensor,
+            patch: torch.Tensor,
+            location: Tuple[int,int,int,int,int,int],
+            hann_window: torch.Tensor,
+        ) -> None:
+            weighted_patch = patch * hann_window
+            i0 = int(location[0])
+            j0 = int(location[1])
+            k0 = int(location[2])
+            i1 = int(location[3])
+            j1 = int(location[4])
+            k1 = int(location[5])
+            output_tensor[:, i0:i1, j0:j1, k0:k1] += weighted_patch
+            avgmask_tensor[:, i0:i1, j0:j1, k0:k1] += hann_window
+
+        def finalize_output(output_tensor: torch.Tensor, avgmask_tensor: torch.Tensor) -> torch.Tensor:
+            return torch.true_divide(output_tensor, avgmask_tensor)
+        
+        def crop_tensor(tensor: torch.Tensor, border: torch.Tensor) -> torch.Tensor:
+            """
+            Supprime un padding symétrique du tenseur 4D (C, D, H, W).
+            `border` est un tensor de forme (4,) indiquant combien couper dans chaque dimension spatiale.
+            """
+            border = border[-3:] // 2
+            d_b, h_b, w_b = border.tolist()
+            return tensor[:, 
+                        d_b:-d_b if d_b > 0 else None,
+                        h_b:-h_b if h_b > 0 else None,
+                        w_b:-w_b if w_b > 0 else None]
+
+        _,D,H,W = padded_size
+        C,_,_,_ = patch_preds[0].shape
+        if len(output_shape) == 3:
+            Do,Ho,Wo = output_shape
+            output_shape = torch.tensor((C,Do,Ho,Wo))
+        hann = get_hann_window(patch_size)
+        logit = torch.zeros((C, D, H, W), dtype=patch_preds[0].dtype)
+        avgmask_tensor = torch.zeros((C, D, H, W), dtype=patch_preds[0].dtype)
         for i in range(len(patch_preds)):
-            patch = patch_preds[i]
-            loc = patch_loc_preds[i]
-            i, j, k, ph, pw, pd = loc
-            weighted_patch = patch * window  
+            add_patch_hann(logit,avgmask_tensor,patch_preds[i],patch_loc_preds[i],hann)
+        
+        logit = finalize_output(logit,avgmask_tensor)
+        logit = crop_tensor(logit,padded_size-output_shape)  
+        return logit
+    
 
-            if weighted_patch.dim() == 5:
-                weighted_patch = weighted_patch.squeeze(0)
-
-            aggregated[:, i:i+ph, j:j+pw, k:k+pd] += weighted_patch.squeeze(0)
-            weight_map[:, i:i+ph, j:j+pw, k:k+pd] += window.squeeze(0)
-
-        weight_map = torch.clamp(weight_map, min=1e-6)
-        return aggregated / weight_map
 
     #@torch.jit.script
     def forward(self,img:torch.Tensor):
         overlap = 0.5
         patch_size = torch.tensor(self.patch_size,dtype=torch.int)
-        original_shape = torch.squeeze(torch.tensor(self.original_shape),dim=0)
-        patch_overlap = torch.maximum(torch.mul(patch_size,overlap),torch.sub(patch_size, torch.tensor(img.shape[3:])))
+        original_shape = torch.tensor(self.original_shape)
+        patch_overlap = torch.maximum(torch.mul(patch_size,overlap),torch.sub(patch_size, torch.tensor(img.shape[-3:])))
         patch_overlap = torch.div(torch.ceil(torch.mul(patch_overlap,overlap)),overlap).to(torch.int)
         patch_overlap = torch.minimum(patch_overlap,torch.sub(patch_size,1))
 
         patches, patches_location, padded_shape = self.grid_patching(img, patch_size,patch_overlap)
-
-        with torch.no_grad():
-            pred_aggr = []
-            patch_loc_preds:List[Tuple[int, int, int, int, int, int]] = []
-            batch_size=2    
-            
+        num_workers=4
+        pred_aggr = []
+        patch_loc_preds:List[Tuple[int, int, int, int, int, int]] = []
+        batch_size=2  
+        with torch.no_grad():   
             for i in range(0, len(patches), batch_size):
                 batch_patches = patches[i:i + batch_size] 
                 batch_locations = patches_location[i:i + batch_size]
+                print("Batch ",i//batch_size+1,"over",len(patches)//batch_size)
                 X = torch.stack(batch_patches, dim=0)
-                if self.device == 'cpu':
+                if self.device == 'cuda':
                     X = X.cuda()
                 
                 if self.tta: # test time augmentation: flip around each axis
-                    with torch.autocast(self.device, enabled=self.enable_autocast):
-                        pred=self.model(X).cpu()
+                    pred=self.model(X).cpu()
                     
                     # flipping tta
                     dims = [[2],[3],[4],[3,2],[4,2],[4,3],[4,3,2]]
                     for d in dims :
                         X_flip = torch.flip(X,dims=d)
 
-                        with torch.autocast(self.device, enabled=self.enable_autocast):
-                            pred_flip = self.model(X_flip)
+                        pred_flip = self.model(X_flip)
                         pred += torch.flip(pred_flip, dims=d).cpu()
                         
                         
                     
                     pred = pred/(len(dims)+1)
                 else:
-                    with torch.autocast(self.device, enabled=self.enable_autocast):
-                        pred=self.model(X).cpu()
-
+                    pred=self.model(X).cpu()
                 for j in range(len(pred)):
+                    print(pred[j].shape)
                     pred_aggr.append(pred[j])
                     patch_loc_preds.append(batch_locations[j])
+                
 
-
-        logit = self.aggregate_patches(pred_aggr,patch_loc_preds,padded_shape,patch_size,device=self.device).to(torch.float)
-
+        print("Aggregation...")
+        logit = self.aggregate_patches(pred_aggr,patch_loc_preds,original_shape,patch_size,padded_shape,device=self.device)
+        self.model = self.model.cpu()
         # TODO : resize3d
 
         return logit
@@ -193,12 +256,29 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None):
     np.save(os.path.join(folder, 'test-input.npy'), img.astype(np.float32))
     print("Test input image has been saved as test-input.npy")
 
+    # Axes order modification by preprocessing TODO move it in preprocessor
+    axes_order = str.lower(metadata["axes"])
+    print(axes_order,img.shape)
+    axes_order = axes_order.replace('t', '') # Remove time dimension if exist
+    if len(img.shape)==3 or len(axes_order)==3:
+        print(axes_order)
+        axes_order = axes_order.replace('c', '') #Channel dimension has been ignored by numpy and will be placed in first place by preprocess
+        axes_order = 'c'+ axes_order
+        print(axes_order)
+    elif len(img.shape)==4: # Channel axes will be swaped in first place by preprocessing
+        tmp = list(axes_order)
+        tmp[loader.config["CHANNEL_AXIS"]] = tmp[0]
+        tmp[0] = 'c'
+        axes_order = ''.join(tmp) 
+    print(axes_order)
+
     # Saving weights
-    model = ModelExport(loader.model,img.shape,loader.config["PREDICTOR"]["kwargs"]["patch_size"],tta=True)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = ModelExport(loader.model,img.shape,axes_order,loader.config["PREDICTOR"]["kwargs"]["patch_size"],tta=True,device=device)
     # TODO: save normal weight too
     # TODO: create a toTorchSript function
-    model = torch.jit.script(model)
-    model.save(os.path.join(folder, "weights-torchscript.pt"))
+    """model = torch.jit.script(model)
+    model.save(os.path.join(folder, "weights-torchscript.pt"))"""
     print("Torchscript model has been saved as weights-torchscript.pt")
     
     # Preprocessing
@@ -213,23 +293,9 @@ def packagev0x5BIZ(path_to_model,test_image,output = None,axes=None):
                                             num_channels=preprocessor['num_channels'],
                                             )
     
-    # Axes order modification by preprocessing TODO move it in preprocessor
-    axes_order = str.lower(metadata["axes"])
-    axes_order = axes_order.replace('t', '') # Remove time dimension if exist
-    if len(img.shape)==3:
-        axes_order = axes_order.replace('c', '') #Channel dimension has been ignored by numpy and will be placed in first place by preprocess
-        axes_order = 'c'+ axes_order
-    elif len(img.shape)==4: # Channel axes will be swaped in first place by preprocessing
-        tmp = list(axes_order)
-        tmp[loader.config["CHANNEL_AXIS"]] = tmp[0]
-        tmp[0] = 'c'
-        axes_order = ''.join(tmp) 
 
     # Prediction
-    output_w = seg_predict_patch_2(img_process,img.shape,loader.model,loader.config["PATCH_SIZE"],tta=True)
-    output = model(img_process)
-
-    assert torch.equal(output,torch.from_numpy(output_w))
+    output = model(torch.from_numpy(img_process))
 
     # Postprocessing
     # TODO : if keep_big/biggest or force_softmax or use_softmax are used warning or error
