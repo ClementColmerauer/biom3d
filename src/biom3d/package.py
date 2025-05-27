@@ -2,12 +2,15 @@ import argparse
 from enum import Enum
 import os
 import torch
+import torch.nn.functional as F
 import numpy as np
 from typing import List,Tuple
+import bioimageio.spec.model.v0_5 as biio
+
 
 from biom3d import register
 from biom3d import utils
-from biom3d.predictors import seg_predict_patch_2
+from biom3d.predictors import seg_predict_patch_2, seg_postprocessing
 from biom3d.builder import Builder, read_config
 from biom3d.preprocess import seg_preprocessor
 
@@ -332,10 +335,217 @@ class GridAggregator():
                     h_b:-h_b if h_b > 0 else None,
                     w_b:-w_b if w_b > 0 else None]
 
+class SizeFilter:
+    @staticmethod
+    def _dist_vec(v1: torch.Tensor, v2: torch.Tensor) -> float:
+        """
+        Euclidean distance between two 1D torch tensors.
+        """
+        v = v2 - v1
+        return torch.sqrt(torch.sum(v * v)).item()
+    
+    @staticmethod
+    def _center(labels:torch.Tensor, idx:int):
+        """
+        return the barycenter of the pixels of label = idx
+        """
+        
+        return torch.mean((torch.argwhere(labels.to(torch.float32) == float(idx))).to(torch.float32), dim=0)
+    
+    @staticmethod
+    def _otsu_thresholding(im):
+        """Otsu's thresholding.
+        """
+        threshold_range = torch.linspace(im.min(), im.max()+1, steps=255)
+        criterias = torch.tensor([SizeFilter._compute_otsu_criteria(im, th) for th in threshold_range])
+        best_th = threshold_range[torch.argmin(criterias,dim=None)]
+        return best_th
+    
+    @staticmethod
+    def _compute_otsu_criteria(im, th):
+        """Otsu's method to compute criteria.
+        Found here: https://en.wikipedia.org/wiki/Otsu%27s_method
+        """
+        # create the thresholded image
+        thresholded_im = torch.zeros(im.shape)
+        thresholded_im[im >= th] = 1
+
+        # compute weights
+        nb_pixels = im.numel()
+        nb_pixels1 = torch.count_nonzero(thresholded_im,dim=None)
+        weight1 = nb_pixels1 / nb_pixels
+        weight0 = 1 - weight1
+
+        # if one of the classes is empty, eg all pixels are below or above the threshold, that threshold will not be considered
+        # in the search for the best threshold
+        if weight1 == 0 or weight0 == 0:
+            return torch.tensor(float("inf"))
+
+        # find all pixels belonging to each class
+        val_pixels1 = im[thresholded_im == 1].to(torch.float32)
+        val_pixels0 = im[thresholded_im == 0].to(torch.float32)
+
+        # compute variance of these classes
+        var1 = torch.var(val_pixels1, dim=None) if val_pixels1.numel() > 1 else torch.tensor(0.0)
+        var0 = torch.var(val_pixels0, dim=None) if val_pixels0.numel() > 1 else torch.tensor(0.0)
+
+        return weight0 * var0 + weight1 * var1
+    
+    @staticmethod
+    def _volumes(labels):
+        """
+        returns the volumes of all the labels in the image
+        """
+        return torch.unique(labels, return_counts=True,dim=None)[1]
+    
+    @staticmethod
+    def _get_neighbors(z: int, y: int, x: int,D:int,H:int,W:int) -> List[Tuple[int, int, int]]:
+            offsets = [-1, 0, 1]
+            neighbors = torch.jit.annotate(List[Tuple[int, int, int]], [])
+            for dz in offsets:
+                for dy in offsets:
+                    for dx in offsets:
+                        if dz == 0 and dy == 0 and dx == 0:
+                            continue
+                        nz = z + dz
+                        ny = y + dy
+                        nx = x + dx
+                        if 0 <= nz < D and 0 <= ny < H and 0 <= nx < W:
+                            neighbors.append((nz, ny, nx))
+            return neighbors
+
+    @staticmethod
+    def _label(msk)->Tuple[torch.Tensor,int]:
+        D, H, W = msk.shape
+        labels = torch.zeros((D, H, W), dtype=torch.int32)
+        current_label = 1
+
+        
+
+        for z in range(D):
+            for y in range(H):
+                for x in range(W):
+                    if msk[z, y, x] == 0 or labels[z, y, x] != 0:
+                        continue
+                    stack = torch.jit.annotate(List[Tuple[int, int, int]], [])
+                    stack.append((z, y, x))
+
+                    while len(stack) > 0:
+                        cz, cy, cx = stack.pop()
+                        if labels[cz, cy, cx] != 0:
+                            continue
+                        labels[cz, cy, cx] = current_label
+
+                        neighbors = SizeFilter._get_neighbors(cz, cy, cx,D,H,W)
+                        for nz, ny, nx in neighbors:
+                            if msk[nz, ny, nx] == 1 and labels[nz, ny, nx] == 0:
+                                stack.append((nz, ny, nx))
+
+                    current_label += 1
+
+        return labels,current_label -1
+    
+    @staticmethod
+    def _keep_center_only(msk):        
+        """
+        return mask (msk) with only the connected component that is the closest 
+        to the center of the image.
+        """
+        labels, num = SizeFilter._label(msk)
+        close_idx = SizeFilter._closest(labels,num)
+        return (labels==close_idx).astype(msk.dtype)*255
+    
+    @staticmethod
+    def _closest(labels:torch.Tensor, num:int):
+        """
+        return the index of the object the closest to the center of the image.
+        num: number of label in the image (background does not count)
+        """
+        labels_center = torch.tensor(labels.shape, dtype=torch.float32) / 2
+        centers = [SizeFilter._center(labels,idx+1) for idx in range(num)]
+        dist = torch.tensor([SizeFilter._dist_vec(labels_center,c) for c in centers])
+        # bug fix, return 1 if dist is empty:
+        if len(dist)==0:
+            return torch.tensor(1)
+        else:
+            return torch.argmin(dist,dim=None)+1
+    
+    @staticmethod
+    def keep_big_volumes(msk, thres_rate:float=0.3):
+        """
+        Return the mask (msk) with less labels/volumes. Select only the biggest volumes with
+        the following strategy: minimum_volume = thres_rate * np.sum(np.square(vol))/np.sum(vol)
+        This computation could be seen as the expected volume if the variable volume follows the 
+        probability distribution: p(vol) = vol/np.sum(vol) 
+        """
+        # transform image to label
+        labels, num = SizeFilter._label(msk)
+
+        # if empty or single volume, return msk
+        if num <= 1:
+            return msk
+
+        # compute the volume
+        unq_labels,vol = torch.unique(labels, return_counts=True,dim=None)
+
+        # remove bg
+        unq_labels = unq_labels[1:]
+        vol = vol[1:]
+
+        # compute the expected volume
+        # expected_vol = np.sum(np.square(vol))/np.sum(vol)
+        # min_vol = expected_vol * thres_rate
+        min_vol = thres_rate*SizeFilter._otsu_thresholding(vol)
+
+        # keep only the labels for which the volume is big enough
+        unq_labels = unq_labels[vol > min_vol]
+
+        # compile the selected volumes into 1 image
+        s = (labels==unq_labels[0])
+        for i in range(1,len(unq_labels)):
+            s += (labels==unq_labels[i])
+
+        return s
+    
+    @staticmethod
+    def keep_biggest_volume_centered(msk):
+        """
+        return mask (msk) with only the connected component that is the closest 
+        to the center of the image if its volumes is not too small ohterwise returns
+        the biggest object (different from the background).
+        (too small meaning that its volumes shouldn't smaller than half of the biggest one)
+        the final mask intensities are either 0 or msk.max()
+        """
+        labels, num = SizeFilter._label(msk)
+        if num <= 1: # if only one volume, no need to remove something
+            return msk
+        close_idx = SizeFilter._closest(labels,num)
+        vol = SizeFilter._volumes(labels)
+        relative_vol = torch.tensor([vol[close_idx]/vol[idx] for idx in range(1,len(vol))])
+        # bug fix, empty prediction (it should not happen)
+        if len(relative_vol)==0:
+            return msk
+        min_rel_vol = torch.min(relative_vol)
+        if min_rel_vol < 0.5:
+            close_idx = torch.argmin(relative_vol,dim=None)+1
+        return (labels==close_idx).to(msk.dtype)*msk.max()
 
 class ModelExport(torch.nn.Module):
 
-    def __init__(self,model,original_shape,axes_order:str,patch_size:list,num_workers:int = 4,device = 'cpu',tta= False, batch_size=2): #enable_autocast is irrelevant since bioimage don't use it
+    def __init__(self,
+                model,
+                original_shape,
+                axes_order:str,
+                patch_size:list,
+                num_workers:int = 4,
+                device = 'cpu',
+                tta:bool= False, 
+                batch_size=2,
+                use_softmax:bool=True,
+                force_softmax:bool=False,
+                keep_big_only:bool=False,
+                keep_biggest_only:bool=False,
+                return_logit:bool=False): #enable_autocast is irrelevant since bioimage don't use it
         super().__init__()
         self.model = model
         self.device = device
@@ -345,11 +555,73 @@ class ModelExport(torch.nn.Module):
         self.tta = tta
         self.axes_order = axes_order
         self.original_shape = original_shape
+        self.use_softmax=use_softmax
+        self.force_softmax=force_softmax
+        self.keep_big_only=keep_big_only
+        self.keep_biggest_only=keep_biggest_only
+        self.return_logit=return_logit
+
         self.model = model.to(self.device).eval()
         self.model.to(self.device)
 
-    def postprocessing():
-        pass
+    def postprocessing(self,
+        logit,
+        )->torch.Tensor:
+        """
+        Post-process the logit (model output) to obtain the final segmentation mask. Can optionally remove some noise. 
+
+        Recommanded to be used after biom3d.predictors.seg_predict_patch_2.
+    
+        Parameters
+        ----------
+        logit : torch.Tensor
+            The raw model output.
+
+        Returns
+        -------
+        torch.tensor
+            The post-processed segmentation mask or logit.
+        """
+        num_classes:int = logit.shape[0]
+
+        if self.return_logit: 
+            return logit
+
+        if self.use_softmax:
+            out = (logit.softmax(dim=0).argmax(dim=0)).int() 
+        elif self.force_softmax:
+            # if the training has been done with a sigmoid activation and we want to export a softmax
+            # it is possible to use `force_softmax` argument
+            sigmoid = (logit.sigmoid()>0.5).int()
+            softmax = (logit.softmax(dim=0).argmax(dim=0)).int()+1
+            cond = sigmoid.max(dim=0).values
+            out = torch.where(cond>0, softmax, 0)  
+        else:
+            out = (logit.sigmoid()>0.5).int()
+                  
+        if self.keep_big_only and self.keep_biggest_only:
+            print("[Warning] Incompatible options 'keep_big_only' and 'keep_biggest_only' have both been set to True. Please deactivate one! We consider here only 'keep_biggest_only'.")
+        if self.keep_biggest_only or self.keep_big_only:
+            if self.use_softmax: # then one-hot encode the net output
+                out = out.to(torch.long)
+                out = F.one_hot(out, num_classes=num_classes).to(torch.int)
+                if len(out)==3: out = out.permute(2,0,1)
+                elif len(out)==4: out = out.permute(3,0,1,2)
+                else: raise RuntimeError()
+
+            if len(out.shape)==3:
+                out = SizeFilter.keep_big_volumes(out) if self.keep_big_only else SizeFilter.keep_biggest_volume_centered(out)
+            elif len(out.shape)==4:
+                tmp = []
+                for i in range(out.shape[0]):
+                    tmp += [SizeFilter.keep_big_volumes(out[i]) if self.keep_big_only else SizeFilter.keep_biggest_volume_centered(out[i])]
+                out = torch.stack(tmp)
+                
+            if self.use_softmax: # set back to non-one-hot encoded
+                out = out.argmax(0)
+
+        out = out.to(torch.uint8)    
+        return out
 
     def process_batch(self,X:torch.Tensor,batch_locations:List[Tuple[int,int,int,int,int,int]],pred_aggr:List[torch.Tensor],patch_loc_preds:List[Tuple[int,int,int,int,int,int]]):
         with torch.no_grad():
@@ -376,7 +648,6 @@ class ModelExport(torch.nn.Module):
                 pred_aggr.append(pred[j])
                 patch_loc_preds.append(batch_locations[j])
 
-    #@torch.jit.script
     def forward(self,img:torch.Tensor):
         overlap = 0.5
         patch_size = torch.tensor(self.patch_size,dtype=torch.int)
@@ -425,7 +696,7 @@ class ModelExport(torch.nn.Module):
         print("Aggregation...")
         aggregator = GridAggregator(pred_aggr,patch_loc_preds,original_shape,patch_size,padded_shape)
         logit = aggregator.logit
-        # TODO : resize3d
+        logit = self.postprocessing(logit)
 
         return logit
     
@@ -448,6 +719,7 @@ def package_bioimage_io(path_to_model,test_image,output = None,axes=None):
     assert "axes" in metadata, "Axes order can't be found, you can specify it by using the --axes argument" 
     np.save(os.path.join(folder, 'test-input.npy'), img.astype(np.float32))
     print("Test input image has been saved as test-input.npy")
+    print(img.shape)
 
     # Axes order modification by preprocessing TODO move it in preprocessor
     axes_order = str.lower(metadata["axes"])
@@ -460,6 +732,7 @@ def package_bioimage_io(path_to_model,test_image,output = None,axes=None):
         tmp[loader.config["CHANNEL_AXIS"]] = tmp[0]
         tmp[0] = 'c'
         axes_order = ''.join(tmp) 
+
 
     # Saving weights
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -481,34 +754,30 @@ def package_bioimage_io(path_to_model,test_image,output = None,axes=None):
                                             channel_axis=preprocessor['channel_axis'],
                                             num_channels=preprocessor['num_channels'],
                                             )
+    print(img_process.shape, axes_order)
     
 
     # Prediction
+    print("Prediction started")
     output = model(torch.from_numpy(img_process))
+    print("Prediction done")
+    np.save(os.path.join(folder, 'test-output.npy'),output.numpy)
 
 
-    # Postprocessing
-    # TODO : if keep_big/biggest or force_softmax or use_softmax are used warning or error
+    
 
-    """with open(os.path.join(folder, 'doc.md'), "w") as f:
-        f.write("# My First Model\n")
-        f.write("This model was trained on a very big dataset.\n")
-        f.write("You should not let it get wet or feed it after midnight.\n")
-        f.write("To validate its predictions, make sure that it does not produce any evil clones.\n")
-    print("Documention created as doc.md")"""
-
-    '''build_model(
+    """bioimageio.build_model(
         # the weight file and the type of the weights
-        weight_uri=os.path.join(folder, 'weights.pt'),
+        weight_uri=os.path.join(folder, 'weights-torchscript.pt'),
         weight_type="torchscript",
         # the test input and output data as well as the description of the tensors
         # these are passed as list because we support multiple inputs / outputs per model
         test_inputs=[os.path.join(folder, 'test-input.npy')],
         test_outputs=[os.path.join(folder, 'test-output.npy')],
-        input_axes=["bcyx"],
-        output_axes=["bcyx"],
+        input_axes=[axes_order],
+        output_axes=[axes_order],
         # where to save the model zip, how to call the model and a short description of it
-        output_path=os.path.join(folder,model_config.DESC+ '.zip'),
+        output_path=os.path.join(folder,loader.config.DESC+ '.zip'),
         name="MyFirstModel",
         description="a fancy new model",
         # additional metadata about authors, licenses, citation etc.
@@ -516,7 +785,7 @@ def package_bioimage_io(path_to_model,test_image,output = None,axes=None):
         license="CC-BY-4.0",
         documentation="my-model/doc.md",
         tags=["nucleus-segmentation"],  # the tags are used to make models more findable on the website
-        cite=[{"text": "Gizmo et al.", "doi": "doi:10.1002/xyzacab123"}],)'''
+        cite=[{"text": "Gizmo et al.", "doi": "doi:10.1002/xyzacab123"}],)"""
 
     
 class Target(Enum ):    
