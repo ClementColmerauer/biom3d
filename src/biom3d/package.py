@@ -335,12 +335,13 @@ class GridAggregator():
 
 class ModelExport(torch.nn.Module):
 
-    def __init__(self,model,original_shape,axes_order:str,patch_size:list,num_workers:int = 4,device = 'cpu',tta= False): #enable_autocast is irrelevant since bioimage don't use it
+    def __init__(self,model,original_shape,axes_order:str,patch_size:list,num_workers:int = 4,device = 'cpu',tta= False, batch_size=2): #enable_autocast is irrelevant since bioimage don't use it
         super().__init__()
         self.model = model
         self.device = device
         self.patch_size = patch_size
         self.num_workers = num_workers
+        self.batch_size = batch_size
         self.tta = tta
         self.axes_order = axes_order
         self.original_shape = original_shape
@@ -350,6 +351,31 @@ class ModelExport(torch.nn.Module):
     def postprocessing():
         pass
 
+    def process_batch(self,X:torch.Tensor,batch_locations:List[Tuple[int,int,int,int,int,int]],pred_aggr:List[torch.Tensor],patch_loc_preds:List[Tuple[int,int,int,int,int,int]]):
+        with torch.no_grad():
+            if self.device == 'cuda':
+                X = X.cuda()
+                    
+            if self.tta: # test time augmentation: flip around each axis
+                pred=self.model(X).cpu()
+                
+                # flipping tta
+                dims = [[2],[3],[4],[3,2],[4,2],[4,3],[4,3,2]]
+                for d in dims :
+                    X_flip = torch.flip(X,dims=d)
+
+                    pred_flip = self.model(X_flip)
+                    pred += torch.flip(pred_flip, dims=d).cpu()
+                    
+                    
+                
+                pred = pred/(len(dims)+1)
+            else:
+                pred=self.model(X).cpu()
+            for j in range(len(pred)):
+                pred_aggr.append(pred[j])
+                patch_loc_preds.append(batch_locations[j])
+
     #@torch.jit.script
     def forward(self,img:torch.Tensor):
         overlap = 0.5
@@ -358,44 +384,43 @@ class ModelExport(torch.nn.Module):
         patch_overlap = torch.maximum(torch.mul(patch_size,overlap),torch.sub(patch_size, torch.tensor(img.shape[-3:])))
         patch_overlap = torch.div(torch.ceil(torch.mul(patch_overlap,overlap)),overlap).to(torch.int)
         patch_overlap = torch.minimum(patch_overlap,torch.sub(patch_size,1))
+        pred_aggr =  torch.jit.annotate(List[torch.Tensor], [])
+        patch_loc_preds = torch.jit.annotate(List[Tuple[int,int,int,int,int,int]], [])
 
+        # Sample the image in patches
         sampler = GridSampler(img,patch_size,patch_overlap)
         patches = sampler.patches
         patches_location = sampler.patches_location
         padded_shape = sampler.padded_shape
-        num_workers=4
-        pred_aggr = []
-        patch_loc_preds:List[Tuple[int, int, int, int, int, int]] = []
-        batch_size=2  
-        with torch.no_grad():   
-            for i in range(0, len(patches), batch_size):
-                batch_patches = patches[i:i + batch_size] 
-                batch_locations = patches_location[i:i + batch_size]
-                print("Batch ",i//batch_size+1,"over",len(patches)//batch_size)
-                X = torch.stack(batch_patches, dim=0)
-                if self.device == 'cuda':
-                    X = X.cuda()
-                
-                if self.tta: # test time augmentation: flip around each axis
-                    pred=self.model(X).cpu()
-                    
-                    # flipping tta
-                    dims = [[2],[3],[4],[3,2],[4,2],[4,3],[4,3,2]]
-                    for d in dims :
-                        X_flip = torch.flip(X,dims=d)
 
-                        pred_flip = self.model(X_flip)
-                        pred += torch.flip(pred_flip, dims=d).cpu()
-                        
-                        
+        # Batches generation
+        batches: List[torch.Tensor] = []
+        batches_locations : List[List[Tuple[int,int,int,int,int,int]]] = []
+        for i in range(0, len(patches), self.batch_size): # TODO : manage case where len(patches) is not a multiple of batch_size
+            batch = patches[i:i + self.batch_size]
+            batches.append(torch.stack(batch, dim=0))
+            batches_locations.append(patches_location[i:i + self.batch_size])
+        
+        # Initialize parallelisation and run firsts workers
+        next_batch_index = 0
+        running_workers = torch.jit.annotate(List[Tuple[int, torch.jit.Future[None]]], []) # (index of batch, worker)
+        while next_batch_index < len(batches) and len(running_workers) < self.num_workers :
+            print("Batch ",next_batch_index+1,"over",len(batches))
+            worker = torch.jit._fork(self.process_batch, batches[next_batch_index], batches_locations[next_batch_index],pred_aggr,patch_loc_preds)
+            running_workers.append((next_batch_index, worker))
+            next_batch_index += 1
+
+        # Run remaining batches when worker available
+        while len(running_workers) > 0:
+            _, fut = running_workers.pop(0)  
+            # Replace with ._done if torchscript ever implement it, for dynamic pool instead of queue
+            torch.jit._wait(fut)        
+
+            if next_batch_index < len(batches):
+                fut = torch.jit._fork(self.process_batch, batches[next_batch_index], batches_locations[next_batch_index],pred_aggr,patch_loc_preds)
+                running_workers.append((next_batch_index, fut))
+                next_batch_index += 1
                     
-                    pred = pred/(len(dims)+1)
-                else:
-                    pred=self.model(X).cpu()
-                for j in range(len(pred)):
-                    pred_aggr.append(pred[j])
-                    patch_loc_preds.append(batch_locations[j])
-                
 
         print("Aggregation...")
         aggregator = GridAggregator(pred_aggr,patch_loc_preds,original_shape,patch_size,padded_shape)
