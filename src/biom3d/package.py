@@ -4,13 +4,12 @@ import os
 import torch
 import torch.nn.functional as F
 import numpy as np
+import hashlib
 from typing import List,Tuple
-import bioimageio.spec.model.v0_5 as biio
 
 
 from biom3d import register
 from biom3d import utils
-from biom3d.predictors import seg_predict_patch_2, seg_postprocessing
 from biom3d.builder import Builder, read_config
 from biom3d.preprocess import seg_preprocessor
 
@@ -83,7 +82,7 @@ class GridSampler:
                     int(border[1].item()), int(border[1].item()),
                     int(border[0].item()), int(border[0].item())]
 
-        padded_img = torch.nn.functional.pad(self._img, padding, mode='constant', value=0.0)
+        padded_img = F.pad(self._img, padding, mode='constant', value=0.0)
         
         return padded_img
 
@@ -530,6 +529,71 @@ class SizeFilter:
             close_idx = torch.argmin(relative_vol,dim=None)+1
         return (labels==close_idx).to(msk.dtype)*msk.max()
 
+class PostProcessing:
+    @staticmethod
+    def seg_postprocessing(logit:torch.Tensor,
+                           use_softmax:bool,
+                           force_softmax : bool, 
+                           return_logit : bool, 
+                           keep_big_only:bool,
+                           keep_biggest_only:bool)->torch.Tensor:
+        """
+        Post-process the logit (model output) to obtain the final segmentation mask. Can optionally remove some noise. 
+
+        Recommanded to be used after biom3d.predictors.seg_predict_patch_2.
+    
+        Parameters
+        ----------
+        logit : torch.Tensor
+            The raw model output.
+
+        Returns
+        -------
+        torch.tensor
+            The post-processed segmentation mask or logit.
+        """
+        num_classes:int = logit.shape[0]
+
+        if return_logit: 
+            return logit
+
+        if use_softmax:
+            out = (logit.softmax(dim=0).argmax(dim=0)).int() 
+        elif force_softmax:
+            # if the training has been done with a sigmoid activation and we want to export a softmax
+            # it is possible to use `force_softmax` argument
+            sigmoid = (logit.sigmoid()>0.5).int()
+            softmax = (logit.softmax(dim=0).argmax(dim=0)).int()+1
+            cond = sigmoid.max(dim=0).values
+            out = torch.where(cond>0, softmax, 0)  
+        else:
+            out = (logit.sigmoid()>0.5).int()
+                  
+        if keep_big_only and keep_biggest_only:
+            print("[Warning] Incompatible options 'keep_big_only' and 'keep_biggest_only' have both been set to True. Please deactivate one! We consider here only 'keep_biggest_only'.")
+        if keep_biggest_only or keep_big_only:
+            if use_softmax: # then one-hot encode the net output
+                out = out.to(torch.long)
+                out = F.one_hot(out, num_classes=num_classes).to(torch.int)
+                if len(out)==3: out = out.permute(2,0,1)
+                elif len(out)==4: out = out.permute(3,0,1,2)
+                else: raise RuntimeError()
+
+            if len(out.shape)==3:
+                out = SizeFilter.keep_big_volumes(out) if keep_big_only else SizeFilter.keep_biggest_volume_centered(out)
+            elif len(out.shape)==4:
+                tmp = []
+                for i in range(out.shape[0]):
+                    tmp += [SizeFilter.keep_big_volumes(out[i]) if keep_big_only else SizeFilter.keep_biggest_volume_centered(out[i])]
+                out = torch.stack(tmp)
+                
+            if use_softmax: # set back to non-one-hot encoded
+                out = out.argmax(0)
+
+        out = out.to(torch.uint8)    
+        return out
+
+
 class ModelExport(torch.nn.Module):
 
     def __init__(self,
@@ -545,7 +609,7 @@ class ModelExport(torch.nn.Module):
                 force_softmax:bool=False,
                 keep_big_only:bool=False,
                 keep_biggest_only:bool=False,
-                return_logit:bool=False): #enable_autocast is irrelevant since bioimage don't use it
+                return_logit:bool=False): #enable_autocast isn't included because it doesn't work well with Torchscript
         super().__init__()
         self.model = model
         self.device = device
@@ -564,70 +628,13 @@ class ModelExport(torch.nn.Module):
         self.model = model.to(self.device).eval()
         self.model.to(self.device)
 
-    def postprocessing(self,
-        logit,
-        )->torch.Tensor:
-        """
-        Post-process the logit (model output) to obtain the final segmentation mask. Can optionally remove some noise. 
-
-        Recommanded to be used after biom3d.predictors.seg_predict_patch_2.
-    
-        Parameters
-        ----------
-        logit : torch.Tensor
-            The raw model output.
-
-        Returns
-        -------
-        torch.tensor
-            The post-processed segmentation mask or logit.
-        """
-        num_classes:int = logit.shape[0]
-
-        if self.return_logit: 
-            return logit
-
-        if self.use_softmax:
-            out = (logit.softmax(dim=0).argmax(dim=0)).int() 
-        elif self.force_softmax:
-            # if the training has been done with a sigmoid activation and we want to export a softmax
-            # it is possible to use `force_softmax` argument
-            sigmoid = (logit.sigmoid()>0.5).int()
-            softmax = (logit.softmax(dim=0).argmax(dim=0)).int()+1
-            cond = sigmoid.max(dim=0).values
-            out = torch.where(cond>0, softmax, 0)  
-        else:
-            out = (logit.sigmoid()>0.5).int()
-                  
-        if self.keep_big_only and self.keep_biggest_only:
-            print("[Warning] Incompatible options 'keep_big_only' and 'keep_biggest_only' have both been set to True. Please deactivate one! We consider here only 'keep_biggest_only'.")
-        if self.keep_biggest_only or self.keep_big_only:
-            if self.use_softmax: # then one-hot encode the net output
-                out = out.to(torch.long)
-                out = F.one_hot(out, num_classes=num_classes).to(torch.int)
-                if len(out)==3: out = out.permute(2,0,1)
-                elif len(out)==4: out = out.permute(3,0,1,2)
-                else: raise RuntimeError()
-
-            if len(out.shape)==3:
-                out = SizeFilter.keep_big_volumes(out) if self.keep_big_only else SizeFilter.keep_biggest_volume_centered(out)
-            elif len(out.shape)==4:
-                tmp = []
-                for i in range(out.shape[0]):
-                    tmp += [SizeFilter.keep_big_volumes(out[i]) if self.keep_big_only else SizeFilter.keep_biggest_volume_centered(out[i])]
-                out = torch.stack(tmp)
-                
-            if self.use_softmax: # set back to non-one-hot encoded
-                out = out.argmax(0)
-
-        out = out.to(torch.uint8)    
-        return out
-
     def process_batch(self,X:torch.Tensor,batch_locations:List[Tuple[int,int,int,int,int,int]],pred_aggr:List[torch.Tensor],patch_loc_preds:List[Tuple[int,int,int,int,int,int]]):
         with torch.no_grad():
             if self.device == 'cuda':
                 X = X.cuda()
-                    
+            
+            # Contrarly to seg_patch_2 we don't use autocast as torchscript lose even more precision
+            # Hence, exported model will be slower but more accurate on GPU
             if self.tta: # test time augmentation: flip around each axis
                 pred=self.model(X).cpu()
                 
@@ -671,43 +678,72 @@ class ModelExport(torch.nn.Module):
             batch = patches[i:i + self.batch_size]
             batches.append(torch.stack(batch, dim=0))
             batches_locations.append(patches_location[i:i + self.batch_size])
-        
-        # Initialize parallelisation and run firsts workers
-        next_batch_index = 0
-        running_workers = torch.jit.annotate(List[Tuple[int, torch.jit.Future[None]]], []) # (index of batch, worker)
-        while next_batch_index < len(batches) and len(running_workers) < self.num_workers :
-            print("Batch ",next_batch_index+1,"over",len(batches))
-            worker = torch.jit._fork(self.process_batch, batches[next_batch_index], batches_locations[next_batch_index],pred_aggr,patch_loc_preds)
-            running_workers.append((next_batch_index, worker))
-            next_batch_index += 1
 
-        # Run remaining batches when worker available
-        while len(running_workers) > 0:
-            _, fut = running_workers.pop(0)  
-            # Replace with ._done if torchscript ever implement it, for dynamic pool instead of queue
-            torch.jit._wait(fut)        
-
-            if next_batch_index < len(batches):
-                fut = torch.jit._fork(self.process_batch, batches[next_batch_index], batches_locations[next_batch_index],pred_aggr,patch_loc_preds)
-                running_workers.append((next_batch_index, fut))
+        if self.num_workers <= 1 :
+            for i in range(len(batches)):
+                self.process_batch(batches[i],batches_locations[i],pred_aggr,patch_loc_preds)
+        else:
+            # Initialize parallelisation and run firsts workers
+            next_batch_index = 0
+            running_workers = torch.jit.annotate(List[Tuple[int, torch.jit.Future[None]]], []) # (index of batch, worker)
+            while next_batch_index < len(batches) and len(running_workers) < self.num_workers :
+                print("Batch ",next_batch_index+1,"over",len(batches))
+                worker = torch.jit._fork(self.process_batch, batches[next_batch_index], batches_locations[next_batch_index],pred_aggr,patch_loc_preds)
+                running_workers.append((next_batch_index, worker))
                 next_batch_index += 1
+
+            # Run remaining batches when worker available
+            while len(running_workers) > 0:
+                _, fut = running_workers.pop(0)  
+                # Replace with ._done if torchscript ever implement it, for dynamic pool instead of queue
+                torch.jit._wait(fut)        
+
+                if next_batch_index < len(batches):
+                    fut = torch.jit._fork(self.process_batch, batches[next_batch_index], batches_locations[next_batch_index],pred_aggr,patch_loc_preds)
+                    running_workers.append((next_batch_index, fut))
+                    next_batch_index += 1
                     
 
         print("Aggregation...")
         aggregator = GridAggregator(pred_aggr,patch_loc_preds,original_shape,patch_size,padded_shape)
         logit = aggregator.logit
-        logit = self.postprocessing(logit)
+        logit = PostProcessing.seg_postprocessing(logit,self.use_softmax,self.force_softmax,self.return_logit,self.keep_big_only,self.keep_biggest_only)
 
         return logit
-    
-def to_torchscript(model):
+
+def get_raw_npy_header_string(path):
+    with open(path, 'rb') as f:
+        magic = f.read(6)  # b'\x93NUMPY'
+        version = f.read(2)  # major, minor
+        header_len_bytes = f.read(2)
+        header_len = int.from_bytes(header_len_bytes, byteorder='little')
+        header = f.read(header_len)
+        print(len(header), header_len)
+        return header.decode('latin1')  # ou 'utf-8' si aucun caractère spécial
+
+def to_torchscript(img,axes_order,loader):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = ModelExport(loader.model,img.shape,axes_order,loader.config["PREDICTOR"]["kwargs"]["patch_size"],tta=False,device=device)
     return torch.jit.script(model)
 
-#Based on https://github.com/bioimage-io/core-bioimage-io-python/blob/53dfc45cf23351da61e8b22d100d77fb54c540e6/example/model_creation.ipynb
-def package_bioimage_io(path_to_model,test_image,output = None,axes=None): 
+# Stolen at https://www.geeksforgeeks.org/python-program-to-find-hash-of-file/
+def compute_file_hash(file_path, algorithm='sha256'):
+    """Compute the hash of a file using the specified algorithm."""
+    hash_func = hashlib.new(algorithm)
+    
+    with open(file_path, 'rb') as file:
+        # Read the file in chunks of 8192 bytes
+        while chunk := file.read(8192):
+            hash_func.update(chunk)
+    
+    return hash_func.hexdigest()
+
+#Based on https://github.com/bioimage-io/spec-bioimage-io/blob/main/example/load_model_and_create_your_own.ipynb
+def package_bioimage_io(path_to_model,test_image,output_folder = None,axes=None): 
+    import bioimageio.spec.model.v0_5 as biio
     loader = Loader(path_to_model)    
 
-    folder = os.path.join(output, loader.config.DESC)
+    folder = os.path.join(output_folder, loader.config.DESC)
     os.makedirs(folder, exist_ok=True)
     print("Folder created at " + folder)
 
@@ -717,9 +753,10 @@ def package_bioimage_io(path_to_model,test_image,output = None,axes=None):
     if axes != None:
         metadata["axes"] = axes
     assert "axes" in metadata, "Axes order can't be found, you can specify it by using the --axes argument" 
-    np.save(os.path.join(folder, 'test-input.npy'), img.astype(np.float32))
-    print("Test input image has been saved as test-input.npy")
-    print(img.shape)
+    if len(img.shape) == 3 : img = np.expand_dims(img, axis=0)
+    np.save(os.path.join(folder, 'test_input.npy'), img.astype(np.float32),allow_pickle=False)
+    print(get_raw_npy_header_string(os.path.join(folder, 'test_input.npy')))
+    print("Test input image has been saved as test_input.npy")
 
     # Axes order modification by preprocessing TODO move it in preprocessor
     axes_order = str.lower(metadata["axes"])
@@ -735,12 +772,10 @@ def package_bioimage_io(path_to_model,test_image,output = None,axes=None):
 
 
     # Saving weights
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = ModelExport(loader.model,img.shape,axes_order,loader.config["PREDICTOR"]["kwargs"]["patch_size"],tta=False,device=device)
-    # TODO: save normal weight too
-    model = to_torchscript(model)
+    model = to_torchscript(img,axes_order,loader)
     
     model.save(os.path.join(folder, "weights-torchscript.pt"))
+    model_sha = compute_file_hash(os.path.join(folder, "weights-torchscript.pt"))
     print("Torchscript model has been saved as weights-torchscript.pt")
     
     # Preprocessing
@@ -753,56 +788,121 @@ def package_bioimage_io(path_to_model,test_image,output = None,axes=None):
                                             intensity_moments=preprocessor['intensity_moments'],
                                             channel_axis=preprocessor['channel_axis'],
                                             num_channels=preprocessor['num_channels'],
-                                            )
-    print(img_process.shape, axes_order)
-    
+                                            )   
 
     # Prediction
     print("Prediction started")
     output = model(torch.from_numpy(img_process))
     print("Prediction done")
-    np.save(os.path.join(folder, 'test-output.npy'),output.numpy)
+    if len(output.shape) == 3 : output = output.unsqueeze(0)
+    print(output.shape, output.numpy().shape)
+    np.save(os.path.join(folder, 'test_output.npy'), output.numpy().astype(np.uint8),allow_pickle=False)
+    print(get_raw_npy_header_string(os.path.join(folder, 'test_output.npy')))
+    print("Test input image has been saved as test_output.npy")
 
+    #Creating model
+    print("Generating model...")
+    input_axes = []
+    for i in range(len(axes_order)):
+        if axes_order[i]== 'c':
+            identifiers = []
+            for j in range(img_process.shape[i]):
+                identifiers.append(biio.Identifier("Channel_"+str(j)))
+            input_axes.append(biio.ChannelAxis(channel_names=identifiers))
+        else :
+            input_axes.append(biio.SpaceInputAxis(id=biio.AxisId(axes_order[i]), size=img_process.shape[i]))
+    my_model_inputs = [
+        biio.InputTensorDescr(
+            id=biio.TensorId("raw"),
+            axes=input_axes,
+            data=biio.IntervalOrRatioDataDescr(type="float32"),
+            test_tensor=biio.FileDescr(source=biio.RelativeFilePath(os.path.join(folder, "test_input.npy"))),
+        )
+    ]
 
+    output_axes = []
+    for i in range(len(axes_order)):
+        if axes_order[i]== 'c':
+            identifiers = []
+            for j in range(output.shape[i]):
+                identifiers.append(biio.Identifier("Channel_"+str(j)))
+            output_axes.append(biio.ChannelAxis(channel_names=identifiers))
+        else :
+            output_axes.append(biio.SpaceOutputAxis(id=biio.AxisId(axes_order[i]), size=output.shape[i]))
+    my_model_outputs = [
+        biio.OutputTensorDescr(
+            id=biio.TensorId("predictions"),
+            axes=output_axes,
+            data=biio.IntervalOrRatioDataDescr(type="uint8"),
+            test_tensor=biio.FileDescr(source=biio.RelativeFilePath(os.path.join(folder, "test_output.npy"))),
+        )
+    ]
+
+    my_torchscript_weights = biio.TorchscriptWeightsDescr(
+        source=biio.RelativeFilePath(os.path.join(folder,  "weights-torchscript.pt")),
+        sha256=biio.Sha256(model_sha),
+        pytorch_version=biio.Version(torch.__version__),
+    )
+
+    my_model_name = "My cool Model"
+    my_model_description = "A test model for demonstration purposes only"
+    my_model_authors = [
+        biio.Author(name="me", affiliation="my institute", github_user="bioimageiobot")
+    ]  
+    my_model_citations = [
+        biio.CiteEntry(text="for model training see my paper", doi=biio.Doi("10.1234something"))
+    ]
+    my_model_license = biio.LicenseId("MIT")
+    my_model_documentation = biio.RelativeFilePath(os.path.join(folder, "doc.md"))
+
+    my_model = biio.ModelDescr(
+        name=my_model_name,
+        description=my_model_description,
+        authors=my_model_authors,
+        cite=my_model_citations,
+        license=my_model_license,
+        #git_repo=my_model_git_repo,  # change to repo where your model is developed
+        inputs=my_model_inputs,
+        # inputs=[input_descr],  # try out our recreated input description
+        outputs=my_model_outputs,
+        # outputs=[output_descr],  # try out our recreated input description
+        weights=biio.WeightsDescr(
+            torchscript=my_torchscript_weights,
+        ),
+        documentation=my_model_documentation,
+    )
+    print('Model generated')
+    from bioimageio.spec import save_bioimageio_package
+    import warnings
+    # Temporary solution to prevent TimeAxis warning, until bioimage.io fix it
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")  # Capturer tous les warnings
+
+        save_bioimageio_package(my_model, output_path=os.path.join(output_folder,my_model_name.replace(" ","_")+".zip"))
+
+        for w in caught_warnings:
+            warning_message = str(w.message)
+            if "TimeOutputAxis" not in warning_message and "TimeOutputAxisWithHalo" not in warning_message:
+                print(warning_message)  # Afficher les warnings restants
+
+    print('Model exportet as '+my_model_name.replace(" ","_")+'.zip')
     
-
-    """bioimageio.build_model(
-        # the weight file and the type of the weights
-        weight_uri=os.path.join(folder, 'weights-torchscript.pt'),
-        weight_type="torchscript",
-        # the test input and output data as well as the description of the tensors
-        # these are passed as list because we support multiple inputs / outputs per model
-        test_inputs=[os.path.join(folder, 'test-input.npy')],
-        test_outputs=[os.path.join(folder, 'test-output.npy')],
-        input_axes=[axes_order],
-        output_axes=[axes_order],
-        # where to save the model zip, how to call the model and a short description of it
-        output_path=os.path.join(folder,loader.config.DESC+ '.zip'),
-        name="MyFirstModel",
-        description="a fancy new model",
-        # additional metadata about authors, licenses, citation etc.
-        authors=[{"name": "Gizmo"}],
-        license="CC-BY-4.0",
-        documentation="my-model/doc.md",
-        tags=["nucleus-segmentation"],  # the tags are used to make models more findable on the website
-        cite=[{"text": "Gizmo et al.", "doi": "doi:10.1002/xyzacab123"}],)"""
-
     
 class Target(Enum ):    
-    v0x5BIZ = "v0.5BioImageZoo"
+    v0x5BIIO = "v0.5BioImageIo"
 
     def __str__(self):
         return self.value
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="Package model.")
-    parser.add_argument("-t", "--target", type=Target, default=Target.v0x5BIZ, choices=list(Target),help="Target image and version")
+    parser.add_argument("-t", "--target", type=Target, default=Target.v0x5BIIO, choices=list(Target),help="Target image and version")
     parser.add_argument("-o", "--output_dir", type=str, default="./",help="Directory where you want your model, will create a sub folder (default local directory)")
     parser.add_argument("-b", "--best", action = "store_true",help="Whether best model is used")
     parser.add_argument("-a", "--axes", type = str, default = None, help="Specified axes order for images")
     parser.add_argument("model_dir",help="Path to model directory")  
-    parser.add_argument("test_image",help="Path to test image (must be tif or nii.gz)")  
+    parser.add_argument("test_image",help="Path to test image (must be tif, nifty or numpy)")  
     args = parser.parse_args()
     
-    if(args.target == Target.v0x5BIZ):
+    if(args.target == Target.v0x5BIIO):
         package_bioimage_io(args.model_dir,args.test_image,args.output_dir,args.axes)
