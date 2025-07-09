@@ -9,17 +9,17 @@ if [ ! -z "$1" ]; then
     ARCH="$1"
 fi
 DIR="${DIR}.app"
+# Activate environment
+source "$(conda info --base)/etc/profile.d/conda.sh"
 
 # Check if environment exists
 if conda env list | grep -i "^${ENV_NAME}[[:space:]]" > /dev/null; then
     echo "Environment '${ENV_NAME}' already exists."
 else
     echo "Create environment '${ENV_NAME}'..."
-    "$CONDA_PATH" create -y -n "$ENV_NAME" python=3.11 tk
+    conda create -y -n "$ENV_NAME" python=3.11 tk
 fi
 
-# Activate environment
-source "$(conda info --base)/etc/profile.d/conda.sh"
 source conda activate "$ENV_NAME"
 
 # Avoid pip/conda conflicts
