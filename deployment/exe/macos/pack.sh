@@ -8,7 +8,7 @@ ARCH="arm64"
 if [ ! -z "$1" ]; then
     ARCH="$1"
 fi
-DIR="${DIR}_${ARCH}.app"
+DIR="${DIR}.app"
 
 # Check if environment exists
 if conda env list | grep -i "^${ENV_NAME}[[:space:]]" > /dev/null; then
@@ -62,8 +62,8 @@ chmod +x "$DIR/MacOS/Biom3d.sh"
 
 # Zip (7z if installed, else default zip)
 if command -v 7z >/dev/null 2>&1; then
-    7z a -tzip Biom3d.zip "$DIR"
+    7z a -tzip "Biom3d_MacOS_$ARCHITECTURE.zip" "$DIR"
 else
     # zip natif macOS
-    zip -r Biom3d.zip "$DIR"
+    zip -r "Biom3d_MacOS_$ARCHITECTURE.zip" "$DIR"
 fi

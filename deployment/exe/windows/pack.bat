@@ -6,7 +6,6 @@ for /f "delims=" %%i in ('where conda.exe') do (
 set DIR=Biom3d
 set ARCH=x86_64
 if not [%1]==[] set ARCH=%1
-set DIR=%DIR%_Windows_%ARCH%
 
 :: Checking if venv exist
 call "%CONDA_PATH%" env list | findstr /i "%ENV_NAME%" >nul
@@ -47,5 +46,5 @@ copy logo.ico %DIR%/Biom3d.ico
 :: Doesn't work due to antivirus lock
 :: powershell -Command "Compress-Archive -Path '%DIR%' -DestinationPath '%DIR%.zip' -Force"
 :: Need 7z
-7z a -tzip %DIR%.zip %DIR%\
+7z a -tzip %DIR%_Windows_%ARCHITECTURE%.zip %DIR%\
 rmdir /s /q %DIR%
