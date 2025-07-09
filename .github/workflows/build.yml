@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v3
       - id: read-config
         run: |
-          echo "configs=$(jq -c '.' .github/workflows/config_docker.json)" >> $GITHUB_OUTPUT && echo $GITHUB_OUTPUT
+          echo "configs=$(jq -c '.' .github/workflows/config_docker.json)" >> $GITHUB_OUTPUT
 
   build-docker:
     needs: read-config
@@ -73,6 +73,7 @@ jobs:
       - name: Build macOS app
         run: |
           cd deployment/exe/macos && \
+          chomd +x ./pack.sh &&\
           ./pack.sh 
 
       - name: Upload MacOS artifact
