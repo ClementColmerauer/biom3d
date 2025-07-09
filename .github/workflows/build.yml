@@ -76,7 +76,7 @@ jobs:
           ./pack.sh 
 
       - name: Upload MacOS artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Biom3d-MacOS
           path: deployment\exe\windows\Biom3d_MacOS_*.zip
@@ -94,7 +94,7 @@ jobs:
           call build.bat 
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Biom3d-Windows
           path: deployment\exe\windows\Biom3d_Windows_*.zip
