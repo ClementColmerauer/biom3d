@@ -21,6 +21,7 @@ else
 fi
 
 conda activate "$ENV_NAME"
+conda install -y conda-pack
 
 # Avoid pip/conda conflicts
 conda install -y pip=23.1
