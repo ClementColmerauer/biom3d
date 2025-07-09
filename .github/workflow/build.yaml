@@ -1,0 +1,144 @@
+name: Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  APP_NAME: Biom3d
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
+jobs:
+  read-config:
+    runs-on: ubuntu-latest
+    outputs:
+      configs: ${{ steps.read-config.outputs.configs }}
+    steps:
+      - uses: actions/checkout@v3
+      - id: read-config
+        run: |
+          echo "::set-output name=configs::$(jq '.' git/workflow/config_docker.json)"
+
+  build-docker:
+    needs: read-config
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: ${{ fromJson(needs.read-config.outputs.configs) }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}-${{ matrix.config.architecture }}-torch${{ matrix.config.torch_version }}"
+          if [ -n "${{ matrix.config.cuda_version }}" ]; then
+            TAG="$TAG-cuda${{ matrix.config.cuda_version }}-cudnn${{ matrix.config.cudnn_version }}"
+          fi
+
+          if [ -n "${{ matrix.config.target }}" ] && [ "${{ matrix.config.target }}" != "gpu" ]; then
+            TAG="$TAG-${{ matrix.config.target }}"
+          fi
+          docker build \
+            --build-arg BASE_IMAGE=${{ matrix.config.base_image }} \
+            --build-arg TARGET=${{ matrix.config.target }} \
+            --build-arg PYTHON_VERSION=${{ matrix.config.python_version }} \
+            --build-arg OMERO_VERSION=${{ matrix.config.omero_version }} \
+            --build-arg TESTED=${{ matrix.config.tested }} \
+            -t ${{ env.DOCKER_USERNAME }}/biom3d:$TAG .
+          docker push ${{ env.DOCKER_USERNAME }}/biom3d:$TAG
+
+  build-macos:
+    needs: read-config
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Update CFBundleVersion in Info.plist
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ steps.get_version.outputs.version }}" /deployment/exe/macos/Info.plist
+
+      - name: Build macOS app
+        run: |
+          cd deployment/exe/macos && \
+          ./pack.sh 
+
+      - name: Upload MacOS artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Biom3d-MacOS
+          path: deployment\exe\windows\Biom3d_MacOS_*.zip
+
+  build-windows:
+    needs: read-config
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build Windows app
+        shell: cmd
+        run: |
+          cd deployment\exe\windows && ^
+          call build.bat 
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Biom3d-Windows
+          path: deployment\exe\windows\Biom3d_Windows_*.zip
+
+  release:
+    name: Create Release
+    needs: [build-macos, build-windows, build-docker, read-config]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: Biom3d-MacOS
+          path: mac
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: Biom3d-Windows
+          path: win
+
+      - name: Zip source code
+        run: |
+          git archive --format zip --output source.zip HEAD
+
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          if grep -q "## \[$VERSION\]" CHANGELOG.md; then
+            awk "/## \[$VERSION\]/ {flag=1; next} /^## \[/ {flag=0} flag" CHANGELOG.md > changelog.md
+          else
+            echo "Version $VERSION not found in CHANGELOG.md" > changelog.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body_path: changelog.md
+          files: |
+            mac/Biom3d_MacOS_*.zip
+            win/Biom3d_Windows_*.zip
+            source.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
