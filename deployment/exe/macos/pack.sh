@@ -20,7 +20,7 @@ else
     conda create -y -n "$ENV_NAME" python=3.11 tk
 fi
 
-source conda activate "$ENV_NAME"
+conda activate "$ENV_NAME"
 
 # Avoid pip/conda conflicts
 conda install -y pip=23.1
