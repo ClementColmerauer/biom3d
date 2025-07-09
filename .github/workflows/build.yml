@@ -73,7 +73,7 @@ jobs:
       - name: Build macOS app
         run: |
           cd deployment/exe/macos && \
-          chomd +x ./pack.sh &&\
+          chmod +x ./pack.sh &&\
           ./pack.sh 
 
       - name: Upload MacOS artifact
