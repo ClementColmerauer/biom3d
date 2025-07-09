@@ -70,9 +70,22 @@ jobs:
         run: |
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ steps.get_version.outputs.version }}" deployment/exe/macos/Info.plist
 
+      - name: Install Miniforge
+        run: |
+          curl -L -o Miniforge3-MacOSX-arm64.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh
+          bash Miniforge3-MacOSX-arm64.sh -b -p $HOME/miniforge
+          echo "export PATH=$HOME/miniforge/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Initialize conda environment for pack.sh
+        shell: bash
+        run: |
+          source $HOME/miniforge/etc/profile.d/conda.sh
+          conda activate base
+
       - name: Build macOS app
         run: |
           cd deployment/exe/macos && \
+          conda activate base &&\
           chmod +x ./pack.sh &&\
           ./pack.sh 
 
