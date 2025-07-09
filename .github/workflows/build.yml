@@ -85,6 +85,8 @@ jobs:
       - name: Build macOS app
         run: |
           cd deployment/exe/macos && \
+          export PATH=$HOME/miniforge/bin:$PATH && \
+          source $HOME/miniforge/etc/profile.d/conda.sh && \
           conda activate base &&\
           chmod +x ./pack.sh &&\
           ./pack.sh 
