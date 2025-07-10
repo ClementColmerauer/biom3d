@@ -44,7 +44,7 @@ call conda deactivate
 )>%DIR%\bin\env.bat 
 copy Biom3d.bat %DIR%/Biom3d.bat
 copy "%~dp0..\auto_update.py" %DIR%\bin\auto_update.py
-copy logo.ico %DIR%/Biom3d.ico
+copy logo.ico %DIR%\Biom3d.ico
 :: Doesn't work due to antivirus lock
 :: powershell -Command "Compress-Archive -Path '%DIR%' -DestinationPath '%DIR%.zip' -Force"
 :: Need 7z

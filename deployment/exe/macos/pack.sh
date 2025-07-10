@@ -49,7 +49,8 @@ mkdir -p "$DIR/Resources"
 
 # conda pack (change output path)
 conda pack --format=no-archive -o "$DIR/MacOS/bin"
-echo "FIRST_LAUNCH=1" > "$DIR/MacOS/bin/.env"
+echo "export FIRST_LAUNCH=1" > "$DIR/MacOS/bin/env.sh"
+chmod +x "$DIR/MacOS/bin/env.sh"
 
 conda deactivate
 

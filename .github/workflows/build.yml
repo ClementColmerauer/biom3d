@@ -100,11 +100,21 @@ jobs:
         run: echo "ARCH=$(uname -m)" >> $GITHUB_OUTPUT
         shell: bash
 
+      - name: Set REMOTE = True for remote build
+        run: sed -i '' 's/^REMOTE = False/REMOTE = True/' src/biom3d/gui.py
+
+      - name: Build remote macOS app with PyInstaller
+        run: |
+          conda activate installer \ # Created by pack.sh earlier
+          && pyinstaller --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote src/biom3d/gui.py
+
       - name: Upload MacOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: Biom3d-MacOS
-          path: deployment/exe/macos/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}.zip
+          path: |
+            dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote
+            deployment/exe/macos/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}.zip
 
   build-windows:
     needs: read-config
@@ -136,11 +146,37 @@ jobs:
           cd deployment\exe\windows && ^
           call pack.bat 
 
+      - name: Get architecture
+        id: arch
+        shell: powershell
+        run: |
+          $arch = $env:PROCESSOR_ARCHITECTURE
+          switch ($arch) {
+            "AMD64" { $arch = "x86_64" }
+            "ARM64" { $arch = "arm64" }
+            "x86" { $arch = "x86" }
+            default { $arch = $arch }
+          }
+          echo "ARCH=$arch" >> $env:GITHUB_OUTPUT
+
+      - name: Set REMOTE = True for remote build (Windows)
+        shell: powershell
+        run: |
+          (Get-Content src\biom3d\gui.py) -replace '^REMOTE = False', 'REMOTE = True' | Set-Content src\biom3d\gui.py
+
+      - name: Build remote macOS app with PyInstaller
+        run: |
+          conda activate installer \ # Created by pack.sh earlier
+          && pyinstaller --onefile --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote src/biom3d/gui.py
+
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: Biom3d-Windows
-          path: deployment\exe\windows\Biom3d_Windows_*.zip
+          path: |
+            dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote
+            deployment\exe\windows\Biom3d_Windows_*.zip
 
   release:
     name: Create Release
@@ -160,9 +196,9 @@ jobs:
           name: Biom3d-Windows
           path: win
 
-      - name: Zip source code
-        run: |
-          git archive --format zip --output source.zip HEAD
+      # - name: Zip source code
+      #  run: |
+      #    git archive --format zip --output source.zip HEAD
 
       - name: Extract changelog for version
         id: changelog
@@ -183,6 +219,6 @@ jobs:
           files: |
             mac/Biom3d_MacOS_*.zip
             win/Biom3d_Windows_*.zip
-            source.zip
+        #    source.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
