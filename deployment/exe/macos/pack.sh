@@ -4,7 +4,7 @@ set -e
 
 ENV_NAME=installer
 DIR="Biom3d"
-ARCH=uname -m
+ARCH=$(uname -m)
 ARCHIVE_NAME="$DIR_MacOS_$ARCHITECTIRE.zip"
 echo "$ARCHIVE_NAME"
 DIR="${DIR}.app"
