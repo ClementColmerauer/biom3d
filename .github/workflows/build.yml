@@ -116,7 +116,7 @@ jobs:
         with:
           name: Biom3d-MacOS
           path: |
-            dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote
+            dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote.exe
             deployment/exe/macos/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}.zip
 
   build-windows:
@@ -179,7 +179,7 @@ jobs:
         with:
           name: Biom3d-Windows
           path: |
-            dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote
+            dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote.exe
             deployment\exe\windows\Biom3d_Windows_*.zip
 
   release:
