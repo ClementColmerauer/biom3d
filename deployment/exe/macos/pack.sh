@@ -4,10 +4,7 @@ set -e
 
 ENV_NAME=installer
 DIR="Biom3d"
-ARCH="Arm64"
-if [ ! -z "$1" ]; then
-    ARCH="$1"
-fi
+ARCH=uname -m
 ARCHIVE_NAME="$DIR_MacOS_$ARCHITECTIRE.zip"
 echo "$ARCHIVE_NAME"
 DIR="${DIR}.app"
