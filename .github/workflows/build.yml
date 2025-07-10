@@ -56,6 +56,7 @@ jobs:
             --build-arg PYTHON_VERSION=${{ matrix.config.python_version }} \
             --build-arg OMERO_VERSION=${{ matrix.config.omero_version }} \
             --build-arg TESTED=${{ matrix.config.tested }} \
+            -f deployment/dockerfiles/template.dockerfile \
             -t ${{ env.DOCKER_USERNAME }}/biom3d:$TAG .
           docker push ${{ env.DOCKER_USERNAME }}/biom3d:$TAG
 
