@@ -107,7 +107,7 @@ jobs:
         run: |
           export PATH=$HOME/miniforge/bin:$PATH && \
           source $HOME/miniforge/etc/profile.d/conda.sh && \
-          conda activate installer \ # Created by pack.sh earlier && \
+          conda activate installer && \
           pyinstaller --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote src/biom3d/gui.py
 
       - name: Upload MacOS artifact
