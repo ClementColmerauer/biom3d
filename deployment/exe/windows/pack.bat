@@ -34,12 +34,12 @@ if exist %DIR% (
 )
 mkdir %DIR%
 call pip cache purge
-call conda pack --format=no-archive -o %DIR%/bin
+call conda pack --format=no-archive -o %DIR%\bin
 call conda deactivate
 (
 	echo @echo off
     echo set FIRST_LAUNCH=1
-)>%DIR%/bin/env.bat 
+)>%DIR%\bin\env.bat 
 copy Biom3d.bat %DIR%/Biom3d.bat
 copy "%~dp0..\auto_update.py" %DIR%\bin\auto_update.py
 copy logo.ico %DIR%/Biom3d.ico

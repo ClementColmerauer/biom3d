@@ -95,6 +95,9 @@ jobs:
           chmod +x ./pack.sh &&\
           ./pack.sh 
 
+      - name: Debug ZIP output
+        run: ls -l deployment/exe/macos/
+
       - name: Upload MacOS artifact
         uses: actions/upload-artifact@v4
         with:
