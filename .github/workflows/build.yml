@@ -118,9 +118,9 @@ jobs:
 
       - name: Add conda to path
         run: |
-          echo "%USERPROFILE%\miniforge3\Scripts" >> $GITHUB_PATH
-          echo "%USERPROFILE%\miniforge3\Library\bin" >> $GITHUB_PATH
-          echo "%USERPROFILE%\miniforge3\bin" >> $GITHUB_PATH
+          echo %USERPROFILE%\miniforge3\Scripts >> $GITHUB_PATH
+          echo %USERPROFILE%\miniforge3\Library\bin >> $GITHUB_PATH
+          echo %USERPROFILE%\miniforge3\bin >> $GITHUB_PATH
         shell: cmd
 
       - name: Initialize Conda
