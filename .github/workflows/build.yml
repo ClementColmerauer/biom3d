@@ -99,7 +99,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Biom3d-MacOS
-          path: deployment\exe\macos\Biom3d_MacOS_*.zip
+          path: deployment/exe/macos/Biom3d_MacOS_*.zip
 
   build-windows:
     needs: read-config
@@ -126,13 +126,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Download macOS artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: Biom3d-MacOS
           path: mac
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: Biom3d-Windows
           path: win
