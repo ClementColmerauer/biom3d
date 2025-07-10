@@ -8,6 +8,8 @@ ARCH="arm64"
 if [ ! -z "$1" ]; then
     ARCH="$1"
 fi
+ARCHIVE_NAME="$DIR_MacOS_$ARCHITECTIRE.zip"
+echo "$ARCHIVE_NAME"
 DIR="${DIR}.app"
 # Activate environment
 source "$(conda info --base)/etc/profile.d/conda.sh"
@@ -63,8 +65,8 @@ chmod +x "$DIR/MacOS/Biom3d.sh"
 
 # Zip (7z if installed, else default zip)
 if command -v 7z >/dev/null 2>&1; then
-    7z a -tzip "Biom3d_MacOS_$ARCHITECTURE.zip" "$DIR"
+    7z a -tzip "$ARCHIVE_NAME" "$DIR"
 else
     # zip natif macOS
-    zip -r "Biom3d_MacOS_$ARCHITECTURE.zip" "$DIR"
+    zip -r "$ARCHIVE_NAME" "$DIR"
 fi
