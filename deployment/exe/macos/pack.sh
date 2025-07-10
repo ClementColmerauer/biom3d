@@ -5,8 +5,7 @@ set -e
 ENV_NAME=installer
 DIR="Biom3d"
 ARCH=$(uname -m)
-ARCHIVE_NAME="$DIR_MacOS_$ARCHITECTIRE.zip"
-echo "$ARCHIVE_NAME"
+ARCHIVE_NAME="$DIR_MacOS_$ARCH.zip"
 DIR="${DIR}.app"
 # Activate environment
 source "$(conda info --base)/etc/profile.d/conda.sh"
