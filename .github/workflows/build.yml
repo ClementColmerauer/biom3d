@@ -116,11 +116,15 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Windows-x86_64.exe" -OutFile "Miniforge3.exe"
           Start-Process -FilePath .\Miniforge3.exe -ArgumentList "/InstallationType=JustMe", "/AddToPath=1", "/RegisterPython=0", "/S", "/D=$env:USERPROFILE\miniforge3" -NoNewWindow -Wait
 
-      - name: Initialize Conda
+      - name: Add conda to path
         run: |
           echo "%USERPROFILE%\miniforge3\Scripts" >> $GITHUB_PATH
           echo "%USERPROFILE%\miniforge3\Library\bin" >> $GITHUB_PATH
           echo "%USERPROFILE%\miniforge3\bin" >> $GITHUB_PATH
+        shell: cmd
+
+      - name: Initialize Conda
+        run: |
           conda init cmd.exe
         shell: cmd
 
