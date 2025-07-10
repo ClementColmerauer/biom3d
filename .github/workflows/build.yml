@@ -110,12 +110,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Miniforge
-        shell: bash
+      - name: Install Miniforge (Windows)
+        shell: powershell
         run: |
-          curl -L -o Miniforge3-Windows-x86_64.exe https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Windows-x86_64.exe
-          ./Miniforge3-Windows-x86_64.exe /InstallationType=JustMe /AddToPath=1 /RegisterPython=0 /S /D=%USERPROFILE%\\miniforge3
-
+          Invoke-WebRequest -Uri "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Windows-x86_64.exe" -OutFile "Miniforge3.exe"
+          Start-Process -FilePath .\Miniforge3.exe -ArgumentList "/InstallationType=JustMe", "/AddToPath=1", "/RegisterPython=0", "/S", "/D=$env:USERPROFILE\miniforge3" -NoNewWindow -Wait
 
       - name: Initialize Conda
         run: |

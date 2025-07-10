@@ -4,7 +4,7 @@ set -e
 
 ENV_NAME=installer
 DIR="Biom3d"
-ARCH="arm64"
+ARCH="Arm64"
 if [ ! -z "$1" ]; then
     ARCH="$1"
 fi
