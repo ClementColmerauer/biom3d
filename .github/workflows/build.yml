@@ -170,9 +170,9 @@ jobs:
       - name: Build remote Windows app with PyInstaller
         shell: cmd
         run: |
-          conda activate installer ^
-          && pip install pyinstaller ^
-          && pyinstaller --onefile --name Biom3d_Windows_%ARCH%_Remote src\biom3d\gui.py
+          conda activate installer 
+          pip install pyinstaller 
+          pyinstaller --onefile --name Biom3d_Windows_%ARCH%_Remote src\biom3d\gui.py
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
