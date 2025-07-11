@@ -113,8 +113,8 @@ jobs:
 
       - name: List uploaded artifact files
         run: |
-          cd dist
-          cd deployment\exe\windows
+          ls dist
+          ls deployment/exe/macos
         shell: bash
 
       - name: Upload MacOS artifact
@@ -180,6 +180,12 @@ jobs:
           pip install pyinstaller 
           pyinstaller --onefile --name Biom3d_Windows_%ARCH%_Remote src\biom3d\gui.py
 
+      - name: List uploaded artifact files
+        run: |
+          dir dist
+          dir deployment/exe/windows
+        shell: cmd
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
@@ -207,8 +213,8 @@ jobs:
           path: win
 
       - name: Debug Windows artifacts
-        run: dir win
-        shell: cmd
+        run: cd win
+        shell: bash
 
 
       # - name: Zip source code
