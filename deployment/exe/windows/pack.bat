@@ -27,7 +27,7 @@ call pip install pillow future portalocker pywin32 requests "urllib3<2"
 :: Forced to do --no-deps because it would try to reinstall zeroc-ice by compiling it
 call pip install omero-py --no-deps
 call pip install ezomero --no-deps
-call pip install -e ../../../
+call pip install ../../../
 call pip cache purge
 
 :: Pack
