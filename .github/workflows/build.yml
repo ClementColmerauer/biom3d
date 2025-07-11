@@ -149,12 +149,6 @@ jobs:
           conda init cmd.exe
         shell: cmd
 
-      - name: Build Windows app
-        shell: cmd
-        run: |
-          cd deployment\exe\windows && ^
-          call pack.bat 
-
       - name: Get architecture
         id: arch
         shell: powershell
@@ -168,6 +162,13 @@ jobs:
           }
           echo "ARCH=$arch" >> $env:GITHUB_OUTPUT
 
+      - name: Build Windows app
+        shell: cmd
+        run: |
+          cd deployment\exe\windows && ^
+          call pack.bat ${{ steps.arch.outputs.ARCH }}
+
+
       - name: Set REMOTE = True for remote build (Windows)
         shell: powershell
         run: |
@@ -178,7 +179,7 @@ jobs:
         run: |
           conda activate installer 
           pip install pyinstaller 
-          pyinstaller --onefile --name Biom3d_Windows_%ARCH%_Remote src\biom3d\gui.py
+          pyinstaller --onefile --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote src\biom3d\gui.py
 
       - name: List uploaded artifact files
         run: |
@@ -186,13 +187,18 @@ jobs:
           dir deployment\exe\windows
         shell: cmd
 
+      - name: Prepare artifact folder
+        run: |
+          mkdir artifact_root
+          copy dist\Biom3d_Windows_%ARCH%_Remote.exe artifact_root\
+          copy deployment\exe\windows\Biom3d_Windows_*.zip artifact_root\
+        shell: cmd
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: Biom3d-Windows
-          path: |
-            dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote.exe
-            deployment\exe\windows\Biom3d_Windows_*.zip
+          path: artifact_root\
 
   release:
     name: Create Release
