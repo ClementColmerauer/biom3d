@@ -174,7 +174,7 @@ jobs:
           (Get-Content src\biom3d\gui.py) -replace '^REMOTE = False', 'REMOTE = True' | Set-Content src\biom3d\gui.py
 
       - name: Build remote Windows app with PyInstaller
-        shell: cmd
+        shell: powershell
         run: |
           conda activate installer 
           pip install pyinstaller 
@@ -183,7 +183,7 @@ jobs:
       - name: List uploaded artifact files
         run: |
           dir dist
-          dir deployment/exe/windows
+          dir deployment\exe\windows
         shell: cmd
 
       - name: Upload Windows artifact
