@@ -21,9 +21,6 @@ jobs:
         run: |
           echo "configs=$(jq -c '.configs' .github/workflows/config_docker.json)" >> $GITHUB_OUTPUT
 
-      - name: Debug configs output
-        run: echo "${{ needs.read-config.outputs.configs }}"
-
   build-docker:
     needs: read-config
     runs-on: ubuntu-latest
@@ -104,6 +101,7 @@ jobs:
 
       - name: Build remote Windows app with minimal Python env
         shell: bash
+        id: remote
         run: |
           python -m venv remote
           source remote/bin/activate
@@ -112,14 +110,15 @@ jobs:
           pip install pyinstaller paramiko pyyaml
           pyinstaller --clean --onefile \
             --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote \
-            --log-level=DEBUG \
             --icon=deployment/exe/windows/logo.ico \
             src/biom3d/gui.py
+
+          echo "PATH=$(pwd)/dist/Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote" >> "$GITHUB_OUTPUT"
 
       - name: Prepare artifact folder
         run: |
           mkdir artifact_root
-          cp dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote artifact_root/
+          cp ${{steps.remote.outputs.PATH}} artifact_root/
           cp deployment/exe/macos/Biom3d_MacOS_*.zip artifact_root/
         shell: bash
 
@@ -179,22 +178,24 @@ jobs:
           (Get-Content src\biom3d\gui.py) -replace '^REMOTE = False', 'REMOTE = True' | Set-Content src\biom3d\gui.py
 
       - name: Build remote Windows app with minimal Python env
-        shell: bash
+        shell: powershell
         run: |
           python -m venv remote
-          source remote/Scripts/activate
-          pip install --upgrade pip wheel
+          .\remote\Scripts\activate
+          python -m ensurepip --upgrade
+          pip install wheel
           pip install pyinstaller paramiko pyyaml
-          pyinstaller --clean --onefile \
-            --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote \
-            --log-level=DEBUG \
-            --icon=deployment/exe/windows/logo.ico \
+          pyinstaller --clean --onefile `
+            --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote `
+            --icon=deployment/exe/windows/logo.ico `
             src/biom3d/gui.py
+
+          echo "PATH=$(pwd)/dist/Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote" >> "$GITHUB_OUTPUT"
 
       - name: Prepare artifact folder
         run: |
           mkdir artifact_root
-          copy dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote.exe artifact_root\
+          copy ${{ steps.arch.remote.PATH }} artifact_root\
           copy deployment\exe\windows\Biom3d_Windows_*.zip artifact_root\
         shell: cmd
 
