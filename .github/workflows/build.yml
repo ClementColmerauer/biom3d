@@ -99,7 +99,7 @@ jobs:
       - name: Set REMOTE = True for remote build
         run: sed -i '' 's/^REMOTE = False/REMOTE = True/' src/biom3d/gui.py
 
-      - name: Build remote Windows app with minimal Python env
+      - name: Build remote MacOS app with minimal Python env
         shell: bash
         id: remote
         run: |
@@ -109,7 +109,7 @@ jobs:
           pip install wheel
           pip install pyinstaller paramiko pyyaml
           pyinstaller --clean --onefile \
-            --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote \
+            --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote \
             --icon=deployment/exe/windows/logo.ico \
             src/biom3d/gui.py
           cp /Users/runner/work/biom3d/biom3d/dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote $GITHUB_WORKSPACE
