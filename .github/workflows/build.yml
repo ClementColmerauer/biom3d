@@ -111,17 +111,11 @@ jobs:
           pip install pyinstaller && \
           pyinstaller --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote src/biom3d/gui.py
 
-      - name: List uploaded artifact files
-        run: |
-          ls dist
-          ls deployment/exe/macos
-        shell: bash
-
       - name: Prepare artifact folder
         run: |
           mkdir artifact_root
-          cp dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote.exe artifact_root\
-          cp deployment\exe\windows\Biom3d_Windows_*.zip artifact_root\
+          cp dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote artifact_root/
+          cp deployment/exe/macos/Biom3d_MacOS_*.zip artifact_root/
         shell: bash
 
       - name: Upload MacOS artifact
