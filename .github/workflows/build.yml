@@ -109,7 +109,13 @@ jobs:
           conda activate installer && \
           pip install pyinstaller && \
           pyinstaller --clean --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote \
-          --log-level=DEBUG \
+          --exclude-module torch \
+          --exclude-module biom3d.train \
+          --exclude-module biom3d.eval \
+          --exclude-module biom3d.pred \
+          --exclude-module biom3d.omero_pred \
+          --exclude-module omero-py \
+          --exclude-module ezomero \
           --icon=deployment/exe/macos/logo.icns src/biom3d/gui.py
 
       - name: Prepare artifact folder
@@ -181,7 +187,13 @@ jobs:
           conda activate installer
           pip install pyinstaller
           pyinstaller --clean --onefile --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote \
-          --log-level=DEBUG \
+          --exclude-module torch \
+          --exclude-module biom3d.train \
+          --exclude-module biom3d.eval \
+          --exclude-module biom3d.pred \
+          --exclude-module biom3d.omero_pred \
+          --exclude-module omero-py \
+          --exclude-module ezomero \
           --icon=deployment/exe/windows/logo.ico src/biom3d/gui.py
 
       - name: Prepare artifact folder

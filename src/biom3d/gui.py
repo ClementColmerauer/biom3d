@@ -67,6 +67,7 @@ except ImportError as e:
     print("Couldn't import Biom3d modules," ,e)
 
 # Will not be considered by pyinstaller if REMOTE=True has been set earlier (can be automatized by a sed -i 's/^REMOTE = False/REMOTE = True/' gui.py)
+# PyInstaller use it anyway
 if REMOTE==False:
     try:
         # the packages below are only needed for the local version of the GUI
