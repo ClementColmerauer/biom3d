@@ -27,7 +27,7 @@ VENV = "" # virtual environment path
 # The option below is made to remove the 'start locally' button in the gui. This is
 # useful for the deployment only in order to reduce the size of the 
 # distribution we only allow remote access. 
-LOCAL = False 
+LOCAL = False # Not used
 
 MAIN_DIR = "/home/biome/biom3d" # folder containing biom3d repository on server computer
 TRANSPORT = False
