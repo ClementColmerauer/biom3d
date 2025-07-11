@@ -106,8 +106,9 @@ jobs:
         shell: bash
         run: |
           python -m venv remote
-          source remote/Scripts/activate
-          pip install --upgrade pip wheel
+          source remote/bin/activate
+          python -m ensurepip --upgrade
+          pip install wheel
           pip install pyinstaller paramiko pyyaml
           pyinstaller --clean --onefile \
             --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote \
