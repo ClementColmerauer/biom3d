@@ -112,13 +112,12 @@ jobs:
             --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote \
             --icon=deployment/exe/windows/logo.ico \
             src/biom3d/gui.py
-
-          echo "PATH=$(pwd)/dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote" >> "$GITHUB_OUTPUT"
+          cp dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote $GITHUB_WORKSPACE
 
       - name: Prepare artifact folder
         run: |
           mkdir artifact_root
-          cp ${{steps.remote.outputs.PATH}} artifact_root/
+          cp Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote artifact_root/
           cp deployment/exe/macos/Biom3d_MacOS_*.zip artifact_root/
         shell: bash
 
