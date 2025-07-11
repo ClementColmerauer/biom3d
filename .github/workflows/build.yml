@@ -109,7 +109,7 @@ jobs:
           source $HOME/miniforge/etc/profile.d/conda.sh && \
           conda activate installer && \
           pip install pyinstaller && \
-          pyinstaller --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote src/biom3d/gui.py
+          pyinstaller --clean --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote src/biom3d/gui.py
 
       - name: Prepare artifact folder
         run: |
@@ -210,13 +210,6 @@ jobs:
         with:
           name: Biom3d-Windows
           path: win
-
-      - name: Debug artifacts
-        run: |
-          ls win && \
-          ls mac
-        shell: bash
-
 
       # - name: Zip source code
       #  run: |
