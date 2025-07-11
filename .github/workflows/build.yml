@@ -1,7 +1,6 @@
 name: Build and Publish
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -109,7 +108,8 @@ jobs:
           source $HOME/miniforge/etc/profile.d/conda.sh && \
           conda activate installer && \
           pip install pyinstaller && \
-          pyinstaller --clean --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote src/biom3d/gui.py
+          pyinstaller --clean --onefile --name Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote \
+          --icon=deployment/exe/macos/logo.icns src/biom3d/gui.py
 
       - name: Prepare artifact folder
         run: |
@@ -174,11 +174,13 @@ jobs:
           (Get-Content src\biom3d\gui.py) -replace '^REMOTE = False', 'REMOTE = True' | Set-Content src\biom3d\gui.py
 
       - name: Build remote Windows app with PyInstaller
-        shell: powershell
+        shell: bash
         run: |
-          conda activate installer 
-          pip install pyinstaller 
-          pyinstaller --onefile --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote src\biom3d\gui.py
+          source "$(conda info --base)/etc/profile.d/conda.sh"
+          conda activate installer
+          pip install pyinstaller
+          pyinstaller --clean --onefile --name Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote \
+          --icon=deployment/exe/windows/logo.ico src/biom3d/gui.py
 
       - name: Prepare artifact folder
         run: |
@@ -211,7 +213,7 @@ jobs:
           name: Biom3d-Windows
           path: win
 
-      # - name: Zip source code
+      # - name: Zip source code # Not necessary
       #  run: |
       #    git archive --format zip --output source.zip HEAD
 
