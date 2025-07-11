@@ -41,7 +41,7 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}-${{ matrix.config.architecture }}-torch${{ matrix.config.torch_version }}"
           if [ -n "${{ matrix.config.cuda_version }}" ]; then
             TAG="$TAG-cuda${{ matrix.config.cuda_version }}-cudnn${{ matrix.config.cudnn_version }}"
-          fi
+          fi  
 
           if [ -n "${{ matrix.config.target }}" ] && [ "${{ matrix.config.target }}" != "gpu" ]; then
             TAG="$TAG-${{ matrix.config.target }}"
@@ -113,7 +113,7 @@ jobs:
             --icon=deployment/exe/windows/logo.ico \
             src/biom3d/gui.py
 
-          echo "PATH=$(pwd)/dist/Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote" >> "$GITHUB_OUTPUT"
+          echo "PATH=$(pwd)/dist/Biom3d_MacOS_${{ steps.arch.outputs.ARCH }}_Remote" >> "$GITHUB_OUTPUT"
 
       - name: Prepare artifact folder
         run: |
@@ -190,7 +190,7 @@ jobs:
             --icon=deployment/exe/windows/logo.ico `
             src/biom3d/gui.py
 
-          echo "PATH=$(pwd)/dist/Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote" >> "$GITHUB_OUTPUT"
+          echo "PATH=$(pwd)/dist/Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote.exe" >> "$GITHUB_OUTPUT"
 
       - name: Prepare artifact folder
         run: |
