@@ -26,6 +26,9 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /workspace && chmod 777 /workspace \
+    # Folder used by Biom3d as server
+    && mkdir -p /workspace/data && chmod 777 /workspace/data \
+    && mkdir -p /workspace/logs && chmod 777 /workspace/logs \
     #
     # Upgrade pip & install OMERO
     && ${PYTHON_BIN} -m pip install --upgrade pip setuptools wheel && \
