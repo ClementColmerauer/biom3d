@@ -33,7 +33,7 @@ pip install pillow future portalocker requests "urllib3<2"
 # pip install omero-py sans dépendances car zeroc-ice est déjà installé
 pip install --no-deps omero-py
 pip install --no-deps ezomero
-pip install biom3d
+pip install -e ../../../
 pip cache purge
 
 # Pack

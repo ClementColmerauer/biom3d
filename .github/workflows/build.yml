@@ -183,7 +183,7 @@ jobs:
       - name: Prepare artifact folder
         run: |
           mkdir artifact_root
-          copy dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote artifact_root\
+          copy dist\Biom3d_Windows_${{ steps.arch.outputs.ARCH }}_Remote.exe artifact_root\
           copy deployment\exe\windows\Biom3d_Windows_*.zip artifact_root\
         shell: cmd
 
@@ -240,7 +240,7 @@ jobs:
           body_path: changelog.md
           files: |
             mac/Biom3d_MacOS_*.zip
-            mac/Biom3d_MacOS_*._Remote
+            mac/Biom3d_MacOS_*_Remote
             win/Biom3d_Windows_*.zip
             win/Biom3d_Windows_*_Remote.exe
 
