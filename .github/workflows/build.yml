@@ -212,8 +212,10 @@ jobs:
           name: Biom3d-Windows
           path: win
 
-      - name: Debug Windows artifacts
-        run: cd win
+      - name: Debug artifacts
+        run: |
+          ls win && \
+          ls mac
         shell: bash
 
 
@@ -240,6 +242,7 @@ jobs:
           files: |
             mac/Biom3d_MacOS_*.zip
             win/Biom3d_Windows_*.zip
+
         #    source.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
