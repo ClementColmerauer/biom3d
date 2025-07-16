@@ -39,7 +39,17 @@ jobs:
           mask = (image > 0.5).astype(np.uint8)
           np.save('raw/image.npy', image)
           np.save('label/mask.npy', mask)" &&\
+          ls raw &&\
+          ls label &&\
           Biom3d.app/Contents/MacOS/bin/bin/python3.11 -m biom3d.preprocess_train --img_dir raw --msk_dir label --num_epochs=1 --desc Unit --num_classes=1 &&\
-          Biom3d.app/Contents/MacOS/bin/bin/python3.11 -m biom3d.pred -i raw -l Unit 
+          Biom3d.app/Contents/MacOS/bin/bin/python3.11 -m biom3d.pred -i raw -l Unit && \
+          Biom3d.app/Contents/MacOS/bin/bin/python3.11 -c "
+          import tkinter as tk
+          root = tk.Tk()
+          root.title('Test')
+          root.geometry('200x100')
+          print('Fenêtre créée sans mainloop')
+          "
+
 
 
