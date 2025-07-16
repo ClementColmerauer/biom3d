@@ -124,7 +124,7 @@ def data_fingerprint(img_dir, msk_dir=None, num_samples=10000,seed=42):
     # Prevent the crash of np.median in case of empty array
     if spacings == []:
         spacing.append([])
-        
+    print(spacings)
     median_spacing = np.median(np.array(spacings), axis=0)
     
     # compute fingerprints
