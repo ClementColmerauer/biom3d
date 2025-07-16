@@ -39,8 +39,8 @@ This tool is addressed to three different profiles:
    :maxdepth: 2
    :caption: Developper 
    
-   toc/api.rst
-   toc/dep.rst
+   api/api.rst
+   dep/dep.rst
    
 
 
