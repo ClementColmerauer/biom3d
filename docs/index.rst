@@ -38,7 +38,6 @@ This tool is addressed to three different profiles:
 .. toctree::
    :maxdepth: 2
    :caption: Developper 
-   :titlesonly:
    
    api/api.rst
    dep/dep.rst
