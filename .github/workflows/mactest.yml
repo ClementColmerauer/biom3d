@@ -37,8 +37,8 @@ jobs:
           import numpy as np
           image = np.random.rand(8, 32, 32).astype(np.float32)
           mask = (image > 0.5).astype(np.uint8)
-          np.save('raw/image.npy', image)
-          np.save('label/mask.npy', mask)" &&\
+          np.save('raw/1.npy', image)
+          np.save('label/1.npy', mask)" &&\
           ls raw &&\
           ls label &&\
           Biom3d.app/Contents/MacOS/bin/bin/python3.11 -m biom3d.preprocess_train --img_dir raw --msk_dir label --num_epochs=1 --desc Unit --num_classes=1 &&\
