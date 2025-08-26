@@ -34,7 +34,6 @@ RUN apt-get update && apt-get install -y \
     https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-cp311-cp311-manylinux_2_28_x86_64.whl \
     omero-py==${OMERO_VERSION}\
     && ${PYTHON_BIN} -m pip install --no-cache-dir --no-deps ezomero \
-    && 
     
 # Clone project
 COPY . /Biom3d
