@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y \
     python${PYTHON_VERSION}-tk \
     python3-pip \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /workspace && chmod 777 /workspace \
+    && mkdir -p /app && chmod 777 /app \
     && mkdir -p /Biom3d && chmod 777 //Biom3d \
     #
     # Upgrade pip & install OMERO
@@ -33,14 +33,16 @@ RUN apt-get update && apt-get install -y \
     ${PYTHON_BIN} -m pip install \
     https://github.com/glencoesoftware/zeroc-ice-py-linux-x86_64/releases/download/20240202/zeroc_ice-3.6.5-cp311-cp311-manylinux_2_28_x86_64.whl \
     omero-py==${OMERO_VERSION}\
-    && ${PYTHON_BIN} -m pip install --no-cache-dir --no-deps ezomero 
+    && ${PYTHON_BIN} -m pip install --no-cache-dir --no-deps ezomero \
+    && 
     
 # Clone project
 COPY . /Biom3d
 WORKDIR /Biom3d
 
 # Copy entrypoint
-RUN chmod +x /Biom3d/deployment/dockerfiles/entrypoint.sh \
+RUN cp /Biom3d/deployment/dockerfiles/entrypoint.sh /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh \
     #
     # Install biom3d
     && ${PYTHON_BIN} -m pip install . \
@@ -52,5 +54,6 @@ RUN chmod +x /Biom3d/deployment/dockerfiles/entrypoint.sh \
         ln -s /opt/conda/lib/libnvrtc.so.11.2 /opt/conda/lib/libnvrtc.so || true ; \
         fi
 
-WORKDIR /workspace
-ENTRYPOINT ["/Biom3d/deployment/dockerfiles/entrypoint.sh"]
+
+WORKDIR /app
+ENTRYPOINT ["/app/entrypoint.sh"]
