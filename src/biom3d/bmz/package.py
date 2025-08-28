@@ -11,7 +11,6 @@ from typing import List,Tuple
 import yaml
 
 from importlib import resources
-from pathlib import Path
  
 from bioimageio.spec.model.v0_5 import EnsureDtypeDescr,EnsureDtypeKwargs,ClipDescr,ClipKwargs,ZeroMeanUnitVarianceDescr,RunMode,Config
 from bioimageio.spec.common import FileDescr
@@ -21,6 +20,7 @@ from biom3d import register
 from biom3d import utils
 from biom3d.builder import Builder, read_config
 from biom3d.preprocess import seg_preprocessor
+from biom3d.utils.config import AttrDict
 
 # TODO shatter this file
 
@@ -30,7 +30,7 @@ class Loader(Builder):
         # load the config file and change some parameters if multi-gpus training    
         path_to_config = os.path.join(path, 'log','config.yaml')
         self.config = utils.adaptive_load_config(path_to_config)
-        
+
         # if cuda is not available then deactivate USE_FP16
         if not torch.cuda.is_available():
             self.config.USE_FP16 = False
@@ -44,7 +44,11 @@ class Loader(Builder):
         else:
             ckpt = torch.load(ckpt_path,weights_only=True)
         print("Loading model from", ckpt_path)
-        self.model = read_config(self.config.MODEL, register.models)
+        if self.config.MODEL.fct == "UNet3DVGGDeep":
+            from biom3d.bmz.models.unet3d_vgg_deep import UNet
+            self.model = read_config(self.config.MODEL,AttrDict(UNet3DVGGDeep=AttrDict(fct=UNet, kwargs=AttrDict())))
+        else : raise NotImplementedError("Only VGG3DDeep has torchscript compatibility and thus can be exported.\n"\
+                                         "If the model it torchscript compatible, add it to biom3d.bmz.package.Loader class.")
         print(self.model.load_state_dict(ckpt['model'], strict=False))
 
 #Based on torchio gridsampler
@@ -947,6 +951,7 @@ def package_bioimage_io(path_to_model,
                                             intensity_moments=preprocessor['intensity_moments'],
                                             channel_axis=preprocessor['channel_axis'],
                                             num_channels=preprocessor['num_channels'],
+                                            num_classes=loader.config.NUM_CLASSES
                                             )   
 
     output=make_prediction(model,img_process) if pred is None else utils.adaptive_imread(pred)[0]
