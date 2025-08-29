@@ -15,6 +15,12 @@ thing like torch.nn.Module,...) and the self.head that isn't explicitly declared
 In Biapy they use a Softmax layer in model to avoid the former missing softmax post processing, so maybe a similar approach can allow us to avoid torchscript.
 
 Need to test if recent version of models are ONNX compatible that would be better.
+
+What's left to do:
+- Ensure it work with 2d
+- Creating a system that will export several version of the model with num_worker and batch_size
+  Need to monitor memory usage by image size, then fixe some configs and auto adapt num_worker and batch_size to match them
+  Also add in documentation how to change default weights used
 """
 
 import os
@@ -517,7 +523,7 @@ def _load_and_preprocess(axes:Optional[str],
     if len(img.shape) == 3 : img = np.expand_dims(img, axis=0)
     img = img.astype(np.float32)
 
-    # Axes order modification by preprocessing TODO move it in preprocessor
+    # Axes order modification by preprocessing TODO move it in preprocessor ?
     axes_order = str.lower(metadata["axes"])
     axes_order = axes_order.replace('t', '') # Remove time dimension if exist
     if len(img.shape)==3 or len(axes_order)==3:
