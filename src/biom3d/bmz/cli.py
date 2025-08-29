@@ -103,15 +103,15 @@ def parse_training_data_string(data_str: str):
             "Expected: 2 field separated by ',' : id,version"
         )
 
-    id,version, = parts
+    training_data_id,version, = parts
 
-    if not id:
+    if not training_data_id:
         raise ValueError("The 'id' field is mandatory for training data.")
     if not version:
         raise ValueError("The 'version' field is mandatory for training data.")
 
     return LinkedDataset(
-        id=id,
+        id=training_data_id,
         version=version,
     )
 
@@ -124,15 +124,15 @@ def parse_parent_string(parent_str: str):
             "Expected: 2 field separated by ',' : id,version"
         )
 
-    id,version, = parts
+    parent_id,version, = parts
 
-    if not id:
+    if not parent_id:
         raise ValueError("The 'id' field is mandatory for parent.")
     if not version:
         raise ValueError("The 'version' field is mandatory for parent.")
 
     return LinkedModel(
-        id=id,
+        id=parent_id,
         version=version,
     )
 
