@@ -5,12 +5,12 @@ from bioimageio.spec.model.v0_5 import LinkedModel,ReproducibilityTolerance
 from biom3d.bmz import package_bioimage_io,save_run_mode,save_config
 from enum import Enum
 
-def parse_field(s: str) -> str | None:
+def _parse_field(s: str) -> str | None:
         s = s.strip()
         return None if s.lower() == "none" or s == "" else s
 
-def parse_author_string(author_str: str):
-    parts = [parse_field(p) for p in author_str.split(",")]
+def _parse_author_string(author_str: str):
+    parts = [_parse_field(p) for p in author_str.split(",")]
 
     if len(parts) != 5:
         raise ValueError(
@@ -31,8 +31,8 @@ def parse_author_string(author_str: str):
         orcid=orcid,
     )
 
-def parse_maintainer_string(maintainer_str: str):
-    parts = [parse_field(p) for p in maintainer_str.split(",")]
+def _parse_maintainer_string(maintainer_str: str):
+    parts = [_parse_field(p) for p in maintainer_str.split(",")]
 
     if len(parts) != 5:
         raise ValueError(
@@ -53,8 +53,8 @@ def parse_maintainer_string(maintainer_str: str):
         orcid=orcid,
     )
 
-def parse_cite_string(cite_str: str):
-    parts = [parse_field(p) for p in cite_str.split(",")]
+def _parse_cite_string(cite_str: str):
+    parts = [_parse_field(p) for p in cite_str.split(",")]
 
     if len(parts) != 3:
         raise ValueError(
@@ -75,8 +75,8 @@ def parse_cite_string(cite_str: str):
         doi=doi,
     )
 
-def parse_uploader_string(uploader_str: str):
-    parts = [parse_field(p) for p in uploader_str.split(",")]
+def _parse_uploader_string(uploader_str: str):
+    parts = [_parse_field(p) for p in uploader_str.split(",")]
 
     if len(parts) != 2:
         raise ValueError(
@@ -94,8 +94,8 @@ def parse_uploader_string(uploader_str: str):
         name=name,
     )
 
-def parse_training_data_string(data_str: str):
-    parts = [parse_field(p) for p in data_str.split(",")]
+def _parse_training_data_string(data_str: str):
+    parts = [_parse_field(p) for p in data_str.split(",")]
 
     if len(parts) != 2:
         raise ValueError(
@@ -115,8 +115,8 @@ def parse_training_data_string(data_str: str):
         version=version,
     )
 
-def parse_parent_string(parent_str: str):
-    parts = [parse_field(p) for p in parent_str.split(",")]
+def _parse_parent_string(parent_str: str):
+    parts = [_parse_field(p) for p in parent_str.split(",")]
 
     if len(parts) != 2:
         raise ValueError(
@@ -136,7 +136,7 @@ def parse_parent_string(parent_str: str):
         version=version,
     )
 
-def parse_tolerance_args(tolerance_args):
+def _parse_tolerance_args(tolerance_args):
     """
     Parse a list of --tolerance key=value arguments into a dict validated by ReproducibilityTolerance.
     """
@@ -149,7 +149,7 @@ def parse_tolerance_args(tolerance_args):
             if '=' not in entry:
                 raise ValueError(f"Format invalide (pas de '=') : {entry}")
             key, value = entry.split('=', 1)
-            tol_dict[key] = parse_value(value)
+            tol_dict[key] = _parse_value(value)
         # Valide et crée une instance ReproducibilityTolerance
         if("weights_formats") not in tol_dict: tol_dict["weights_formats"]=[] # avoid tuple
         if("output_ids") not in tol_dict: tol_dict["output_ids"]=[]
@@ -157,10 +157,10 @@ def parse_tolerance_args(tolerance_args):
         tolerances.append(tol)
     return tolerances
 
-def parse_value(value: str):
+def _parse_value(value: str):
     if value.startswith("list:"):
         list_str = value[len("list:"):]
-        return [parse_value(v) for v in list_str.split(",")]
+        return [_parse_value(v) for v in list_str.split(",")]
     elif value.startswith("dict:"):
         dict_str = value[len("dict:"):]
         d = {}
@@ -168,7 +168,7 @@ def parse_value(value: str):
             if "=" not in item:
                 raise ValueError(f"Invalid dict item (missing '='): {item}")
             k, v = item.split("=", 1)
-            d[k] = parse_value(v)
+            d[k] = _parse_value(v)
         return d
     elif value.lower() == "true":
         return True
@@ -183,22 +183,20 @@ def parse_value(value: str):
         except ValueError:
             return value
         
-def parse_kwargs_list(kwargs_list):
+def _parse_kwargs_list(kwargs_list):
     parsed = {}
     for entry in kwargs_list:
         if '=' not in entry:
             raise ValueError(f"Invalid format (missing '='): {entry}")
         key, value = entry.split('=', 1)
-        parsed[key] = parse_value(value)
+        parsed[key] = _parse_value(value)
     return parsed
 
-    
 class Target(Enum ):    
     v0x5BIIO = "v0.5BioImageIo"
 
     def __str__(self):
         return self.value
-
 
 if __name__=='__main__':
     # Main parser
@@ -288,27 +286,27 @@ if __name__=='__main__':
         authors = []
         if args.author:
             for author_str in args.author:
-                authors.append(parse_author_string(author_str))
+                authors.append(_parse_author_string(author_str))
 
         cite = []
         if args.cite:
             for cite_str in args.cite:
-                cite.append(parse_cite_string(cite_str))
+                cite.append(_parse_cite_string(cite_str))
 
-        uploader = parse_uploader_string(args.uploader) if args.uploader is not None else None
+        uploader = _parse_uploader_string(args.uploader) if args.uploader is not None else None
 
         maintainers = []
         if args.maintainer:
             for maintainer_str in args.maintainer:
-                maintainers.append(parse_maintainer_string(maintainer_str))
+                maintainers.append(_parse_maintainer_string(maintainer_str))
 
         packagers= []
         if args.packager:
             for packager_str in args.packager:
-                packagers.append(parse_author_string(packager_str))
+                packagers.append(_parse_author_string(packager_str))
 
-        training_data = parse_training_data_string(args.training_data) if args.training_data is not None else None
-        parent = parse_training_data_string(args.parent) if args.parent is not None else None
+        training_data = _parse_training_data_string(args.training_data) if args.training_data is not None else None
+        parent = _parse_parent_string(args.parent) if args.parent is not None else None
         
         if(args.target == Target.v0x5BIIO):
             package_bioimage_io(args.model,
@@ -339,12 +337,12 @@ if __name__=='__main__':
                                 pred=args.pred,
                                 )
     elif args.command=='run-mode':
-        kwargs_dict = parse_kwargs_list(args.kwargs)
+        kwargs_dict = _parse_kwargs_list(args.kwargs)
         save_run_mode(args.name,args.output,kwargs_dict)
     elif args.command=='config':
-        additional_config = parse_kwargs_list(args.additional_config)
-        additional_tolerance = parse_kwargs_list(args.additional_tolerance)
-        tolerance = parse_tolerance_args(args.tolerance)
+        additional_config = _parse_kwargs_list(args.additional_config)
+        additional_tolerance = _parse_kwargs_list(args.additional_tolerance)
+        tolerance = _parse_tolerance_args(args.tolerance)
         save_config(tolerance,additional_tolerance,additional_config,args.output)
     else:
         raise NotImplementedError("This command does not exist.")
