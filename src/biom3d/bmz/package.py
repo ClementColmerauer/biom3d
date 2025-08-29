@@ -245,7 +245,7 @@ def load_run_mode(file):
     bmz.RunMode.model_validate(data)
     return bmz.RunMode(name=data["name"],kwargs=data["kwargs"])
 
-def make_prediction(model,img,is_2d=False)->np.ndarray:
+def _make_prediction(model,img,is_2d=False)->np.ndarray:
     """
     Make a prediction and ensure output is in CZYX or CYZ as numpy.ndarray.
     
@@ -270,7 +270,7 @@ def make_prediction(model,img,is_2d=False)->np.ndarray:
     if not is_2d and len(output.shape) == 3 : output = output.unsqueeze(0)
     return output.numpy()
 
-def get_default_doc_path(folder:str) -> str:
+def _get_default_doc_path(folder:str) -> str:
     """
     Get the default_doc.md from the package and save it in given folder.
 
@@ -289,7 +289,7 @@ def get_default_doc_path(folder:str) -> str:
         shutil.copy(path, temp_path)
     return temp_path
 
-def extract_2d_slice(volume: np.ndarray,is_2d:bool=False):
+def _extract_2d_slice(volume: np.ndarray,is_2d:bool=False):
     """"
     Extract a 2D slice from a 3D image, at middle.
 
@@ -330,7 +330,7 @@ def extract_2d_slice(volume: np.ndarray,is_2d:bool=False):
     
     return slice_2d
 
-def center_crop_2d(image: np.ndarray, size: int) -> np.ndarray:
+def _center_crop_2d(image: np.ndarray, size: int) -> np.ndarray:
     """
     Make a square crop around the center of a 2D image.
 
@@ -369,15 +369,15 @@ def create_snapshot(raw:np.ndarray, pred:np.ndarray,is_2d:bool=False)->np.ndarra
     numpy.ndarray
         A 2d image
     """
-    raw_slice= extract_2d_slice(raw,is_2d)
-    pred_slice= extract_2d_slice(pred,is_2d)
+    raw_slice= _extract_2d_slice(raw,is_2d)
+    pred_slice= _extract_2d_slice(pred,is_2d)
     h1, w1 = raw_slice.shape
     h2, w2 = pred_slice.shape
 
     s = min(h1, w1, h2, w2)
 
-    raw_cropped = center_crop_2d(raw_slice, s)
-    pred_cropped = center_crop_2d(pred_slice, s)
+    raw_cropped = _center_crop_2d(raw_slice, s)
+    pred_cropped = _center_crop_2d(pred_slice, s)
 
     snapshot = np.concatenate([raw_cropped, pred_cropped], axis=1)  # côte à côte
 
@@ -543,7 +543,7 @@ def _load_and_preprocess(axes:Optional[str],
                                             )   
     return img, axes_order,img_process
 
-def validate_inputs(descr:str, author_list:list[Author], cite_list:list[CiteEntry])->None:
+def _validate_inputs(descr:str, author_list:list[Author], cite_list:list[CiteEntry])->None:
     """
     Validate the mandatory inputs for a bioimageio package.
 
@@ -571,8 +571,7 @@ def validate_inputs(descr:str, author_list:list[Author], cite_list:list[CiteEntr
     if not cite_list:
         raise ValueError("At least one citation must be given.")
 
-
-def create_output_folder(output_folder:str, model_name:str)->str:
+def _create_output_folder(output_folder:str, model_name:str)->str:
     """
     Create a new folder at given location to store model infos.
 
@@ -593,7 +592,7 @@ def create_output_folder(output_folder:str, model_name:str)->str:
     print("Folder created at", folder)
     return folder
 
-def archive_original_model(path_to_model:str, folder:str)->str:
+def _archive_original_model(path_to_model:str, folder:str)->str:
     """
     Create a zip of the model and copy it in package folder.
 
@@ -616,8 +615,7 @@ def archive_original_model(path_to_model:str, folder:str)->str:
     shutil.make_archive(zip_path.replace(".zip", ""), 'zip', root_dir=path_to_model)
     return zipped_name
 
-
-def prepare_model_and_images(folder:str, 
+def _prepare_model_and_images(folder:str, 
                              path_to_model:str, 
                              test_image:str, 
                              axes:Optional[str]=None, 
@@ -662,7 +660,7 @@ def prepare_model_and_images(folder:str,
     model_sha = compute_file_hash(model_path)
 
     if pred is None:
-        output = make_prediction(model, img_process,loader.config.IS_2D)
+        output = _make_prediction(model, img_process,loader.config.IS_2D)
     else:
         output = utils.adaptive_imread(pred)[0]
 
@@ -670,8 +668,7 @@ def prepare_model_and_images(folder:str,
 
     return loader, model_sha, axes_order, img_process, output
 
-
-def handle_cover_image(folder:str, cover:Optional[str], img:Optional[np.ndarray], output:Optional[np.ndarray], is_2d:bool)->str:
+def _handle_cover_image(folder:str, cover:Optional[str], img:Optional[np.ndarray], output:Optional[np.ndarray], is_2d:bool)->str:
     """
     Create or load a cover image and transfer it to package folder.
 
@@ -707,8 +704,7 @@ def handle_cover_image(folder:str, cover:Optional[str], img:Optional[np.ndarray]
         plt.imsave(cover_path, snapshot)
     return cover_path
 
-
-def build_rdf_kwargs(folder:str, 
+def _build_rdf_kwargs(folder:str, 
                      model_name:str, 
                      descr:str, 
                      author_list:list[Author], 
@@ -846,7 +842,6 @@ def build_rdf_kwargs(folder:str,
 
     return rdf_kwargs
 
-
 def package_bioimage_io(path_to_model:str,
                         test_image:str,
                         doc_file:str,
@@ -940,21 +935,21 @@ def package_bioimage_io(path_to_model:str,
     -----
     The package folder doesn't contain the rdf
     """
-    validate_inputs(descr, author_list, cite_list)
+    _validate_inputs(descr, author_list, cite_list)
 
-    folder = create_output_folder(output_folder, model_name)
-    zipped = archive_original_model(path_to_model, folder)
+    folder = _create_output_folder(output_folder, model_name)
+    zipped = _archive_original_model(path_to_model, folder)
 
-    loader, model_sha, axes_order, img_process, output = prepare_model_and_images(
+    loader, model_sha, axes_order, img_process, output = _prepare_model_and_images(
         folder, path_to_model, test_image, axes, pred
     )
 
     if doc_file is None:
-        doc_file = get_default_doc_path(folder)
+        doc_file = _get_default_doc_path(folder)
 
-    cover_path = handle_cover_image(folder, cover, img_process, output, loader.config.IS_2D)
+    cover_path = _handle_cover_image(folder, cover, img_process, output, loader.config.IS_2D)
 
-    rdf_kwargs = build_rdf_kwargs(
+    rdf_kwargs = _build_rdf_kwargs(
         folder, model_name, descr, author_list, cite_list, model_sha,
         axes_order, img_process, loader, output, doc_file, cover_path,
         license, tags, git, training_data, parent, version,
