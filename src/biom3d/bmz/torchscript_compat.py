@@ -1,3 +1,12 @@
+"""
+I'm not 100% sure that this code would work with 2d images.
+
+Thing that are not torchscript compatible:
+- Numpy
+- Everything that is dynamic
+- Dynamic typing, variable type are either infered or type hinted (if infered not possible)
+"""
+
 import torch.nn.functional as F
 from typing import List,Tuple
 import torch
@@ -12,8 +21,6 @@ class GridSampler:
                 patch_size: torch.Tensor, 
                 patch_overlap: torch.Tensor):
         """
-        *GridSampler*
-
         Torchscript compatible adaptation of `torchio.data.GridSampler`, pad and cut an image in patches. Store patches in `self.patches`, location in `self.patches_location` and new image size in `self.padded_size`.
         
         Parameters
@@ -35,13 +42,12 @@ class GridSampler:
 
     def _pad(self)->torch.Tensor:
         """
-        *_pad*
-
         Apply symetric pad so patch stay in the image bound
         
         Returns
         ----------
-        Padded version of `self._img`
+        torch.Tensor
+            Padded version of `self._img`
         """
         border = self._patch_overlap // 2
         padding:List[int] = [int(border[2].item()), int(border[2].item()),
@@ -54,8 +60,6 @@ class GridSampler:
 
     def _lexsort_tensor(self,data: torch.Tensor) -> List[Tuple[int, int, int, int, int, int]]:
         """
-        *_lexsort_tensor*
-
         Torchscript friendly (and adaptated to our format) version of lexsort then toList().
 
         Parameters
@@ -64,8 +68,9 @@ class GridSampler:
             The data to sort
 
         Returns
-        ----------
-        Sorted version of `data` as a List of tuple `(ystart,xstart,zstart,yend,xend,zend)`
+        -------
+        list of tuple of int
+            Sorted version of `data` as a List of tuple `(ystart,xstart,zstart,yend,xend,zend)`
         """
         indices = torch.arange(data.size(0))
         num_cols = data.size(1)
@@ -83,15 +88,14 @@ class GridSampler:
             ))
         return output
     
-    def _compute_location(self):
+    def _compute_location(self) -> List[Tuple[int, int, int, int, int, int]]:
         """
-        *_compute_location*
-
         Compute location of patches and return them in a deterministicly sorted list
           
         Returns
-        ----------
-        Patches location as a List of tuple `(ystart,xstart,zstart,yend,xend,zend)`
+        -------
+        list of tuple of int
+            Patches location as a List of tuple `(ystart,xstart,zstart,yend,xend,zend)`
         """
         indexes:List[List[int]] = []
         size = self._img.shape[-3:]
@@ -125,18 +129,19 @@ class GridSampler:
     
     def _crop(self,img:torch.Tensor,index_start:Tuple[int,int,int]):
         """
-        *_crop*
-
-        Generate the patch at given location by cropping `self._img`.
+        Generate the patch at given location by cropping an image.
 
         Parameters
         ----------
+        img: torch.Tensor
+            The image to crop
         index_start : Tuple[int,int,int])
             Stating indexes of the patch.
           
         Returns
-        ----------
-        The patch
+        -------
+        tuple of int
+            The patch
         """
         d0, h0, w0 = index_start
         #Using patch size as security
@@ -151,13 +156,12 @@ class GridSampler:
     
     def _generate_patch(self)->List[torch.Tensor]:      
         """
-        *_generate_patch*
-
         Generate the patches with `self.patches_location`.
           
         Returns
         ----------
-        A list of patch in the same order as `self.patches_location`
+        list of torch.Tensor
+            A list of patch in the same order as `self.patches_location`
         """      
         patches = []
         for l in self.patches_location:
@@ -177,8 +181,6 @@ class GridAggregator():
                  patch_size:torch.Tensor, 
                  padded_size:List[int]):
         """
-        *GridAggergator*
-
         Torchscript compatible adaptation of `torchio.data.GridAggregator`, aggregate a list of prediction and another list of those predicttion location to a logit stored in self.logit
         
         Parameters
@@ -218,15 +220,14 @@ class GridAggregator():
             padded_size_tensor[0]= C
         self.logit = self._crop(padded_size_tensor-output_shape)  
 
-    def _get_hann_window(self):
+    def _get_hann_window(self)->torch.Tensor:
         """
-        *_get_hann_window*
-
-        Get the hann window needed for aggregation
+        Get the hann window needed for aggregation.
 
         Returns 
-        ----------
-        A 3d hann window tensor
+        -------
+        torch.Tensor
+            A 3d hann window tensor
         """
         hann_window = torch.ones(1)
         for i in range(3):
@@ -243,9 +244,7 @@ class GridAggregator():
             patch: torch.Tensor,
             location: Tuple[int,int,int,int,int,int],
         ) -> None:
-        """
-        *_add_patch_hann*
-        
+        """    
         Add the patch to the logit, ponderating with an hann window
 
         Parameters 
@@ -254,6 +253,10 @@ class GridAggregator():
             The patch to had
         location: Tuple[int,int,int,int,int,int]
             The location of the patch
+
+        Returns
+        -------
+        None
         """
         weighted_patch = patch * self._hann
         i0 = int(location[0])
@@ -266,21 +269,18 @@ class GridAggregator():
         self._avgmask_tensor[:, i0:i1, j0:j1, k0:k1] += self._hann
 
     def _finalize_output(self) -> torch.Tensor:
-        """
-        *_finalize_output*
-        
+        """      
         Compute the mean of the logit by the average mask tensor
 
         Returns 
         ----------
-        The logit, still in padded size
+        torch.Tensor
+            The logit, still in padded size
         """
         return torch.true_divide(self.logit, self._avgmask_tensor)
     
     def _crop(self,border: torch.Tensor) -> torch.Tensor:
         """
-        *_crop*
-        
         Crop symetrically the logit by the `border`
 
         Parameters 
@@ -290,7 +290,8 @@ class GridAggregator():
 
         Returns 
         ----------
-        The logit
+        torch.Tensor
+            The logit
         """
         border = border[-3:] // 2
         border_list: List[int]= border.tolist()
@@ -305,21 +306,60 @@ class SizeFilter:
     def _dist_vec(v1: torch.Tensor, v2: torch.Tensor) -> float:
         """
         Euclidean distance between two 1D torch tensors.
+
+        Parameters
+        ----------
+        v1 : torch.Tensor
+            Vector 1
+        v2 : torch.Tensor
+            Vector 2
+
+        Returns
+        -------
+        torch.Tensor
+            Euclidean distance between v1 and v2.
         """
         v = v2 - v1
         return torch.sqrt(torch.sum(v * v)).item()
     
     @staticmethod
-    def _center(labels:torch.Tensor, idx:int):
+    def _center(labels:torch.Tensor, idx:int)->torch.Tensor:
         """
-        return the barycenter of the pixels of label = idx
+        Compute the barycenter of pixels belonging to a specific label.
+
+        Parameters
+        ----------
+        labels : torch.Tensor
+            Label image array where each pixel has an integer label.
+        idx : int
+            Label index for which to compute the barycenter.
+
+        Returns
+        -------
+        torch.Tensor
+            Coordinates of the barycenter as a 1D array (e.g. [y, x] or [z, y, x] depending on dimensions).
+            If no pixels with the given label are found, returns an empty array.
         """
         
         return torch.mean((torch.argwhere(labels.to(torch.float32) == float(idx))).to(torch.float32), dim=0)
     
     @staticmethod
-    def _otsu_thresholding(im):
-        """Otsu's thresholding.
+    def _otsu_thresholding(im:torch.Tensor)->torch.Tensor:
+        """
+        Compute the optimal threshold for an image using Otsu's method.
+
+        This function searches for the threshold value that minimizes the
+        weighted within-class variance of the thresholded image.
+
+        Parameters
+        ----------
+        im : torch.Tensor
+            Grayscale input image as a 2D numpy array.
+
+        Returns
+        -------
+        torch.Tensor
+            Optimal threshold value computed using Otsu's method.
         """
         threshold_range = torch.linspace(im.min(), im.max()+1, steps=255)
         criterias = torch.tensor([SizeFilter._compute_otsu_criteria(im, th) for th in threshold_range])
@@ -328,8 +368,26 @@ class SizeFilter:
     
     @staticmethod
     def _compute_otsu_criteria(im, th):
-        """Otsu's method to compute criteria.
-        Found here: https://en.wikipedia.org/wiki/Otsu%27s_method
+        """
+        Compute the Otsu criteria value for a given threshold on the image.
+
+        This function implements the core step of Otsu's method, which evaluates
+        the within-class variance weighted by class probabilities for a specific threshold.
+        The goal is to find the threshold minimizing this weighted variance.
+        Found here: https://en.wikipedia.org/wiki/Otsu%27s_method.
+
+        Parameters
+        ----------
+        im : torch.Tensor
+            Grayscale input image as a 2D numpy array.
+        th : torch.Tensor
+            Threshold value to evaluate.
+
+        Returns
+        -------
+        torch.Tensor
+            Weighted sum of variances for the two classes separated by the threshold.
+            Returns `np.inf` if one class is empty (to ignore this threshold).
         """
         # create the thresholded image
         thresholded_im = torch.zeros(im.shape)
@@ -357,30 +415,80 @@ class SizeFilter:
         return weight0 * var0 + weight1 * var1
     
     @staticmethod
-    def _volumes(labels):
+    def _volumes(labels:torch.Tensor)->torch.Tensor:
         """
-        returns the volumes of all the labels in the image
+        Compute the volume (pixel or voxel count) of each label in the label image.
+
+        Parameters
+        ----------
+        labels : torch.Tensor
+            Label image array where each pixel has an integer label.
+
+        Returns
+        -------
+        torch.Tensor
+            Array of counts of pixels per label, sorted by label index ascending.
         """
         return torch.unique(labels, return_counts=True,dim=None)[1]
     
     @staticmethod
     def _get_neighbors(z: int, y: int, x: int,D:int,H:int,W:int) -> List[Tuple[int, int, int]]:
-            offsets = [-1, 0, 1]
-            neighbors = torch.jit.annotate(List[Tuple[int, int, int]], [])
-            for dz in offsets:
-                for dy in offsets:
-                    for dx in offsets:
-                        if dz == 0 and dy == 0 and dx == 0:
-                            continue
-                        nz = z + dz
-                        ny = y + dy
-                        nx = x + dx
-                        if 0 <= nz < D and 0 <= ny < H and 0 <= nx < W:
-                            neighbors.append((nz, ny, nx))
-            return neighbors
+        """
+        Get the voxels with the same value, neighbors of a given location.
+
+        Parameters
+        ----------
+        z: int
+            Z coordinate
+        y: int
+            Y coordinate
+        x: int
+            X coordinate
+        D: int
+            Max Z coordinate
+        H: int
+            Max Y coordinate
+        W: int
+            Max X coordinate
+        
+        Returns
+        -------
+        list of tuple (z,y,x)
+        """
+        offsets = [-1, 0, 1]
+        neighbors = torch.jit.annotate(List[Tuple[int, int, int]], [])
+        for dz in offsets:
+            for dy in offsets:
+                for dx in offsets:
+                    if dz == 0 and dy == 0 and dx == 0:
+                        continue
+                    nz = z + dz
+                    ny = y + dy
+                    nx = x + dx
+                    if 0 <= nz < D and 0 <= ny < H and 0 <= nx < W:
+                        neighbors.append((nz, ny, nx))
+        return neighbors
 
     @staticmethod
-    def _label(msk)->Tuple[torch.Tensor,int]:
+    def _label(msk:torch.Tensor)->Tuple[torch.Tensor,int]:
+        """
+        Label connected components in a 3D binary mask using iterative flood fill.
+
+        Parameters
+        ----------
+        msk : torch.Tensor
+            A 3D binary tensor of shape (D, H, W), where `1` indicates foreground
+            voxels and `0` indicates background.
+
+        Returns
+        -------
+        labels : torch.Tensor
+            A 3D tensor of the same shape as `msk` where each connected component
+            is assigned a unique integer label (starting from 1). Background voxels remain 0.
+
+        num_labels : int
+            The number of connected components found in the input mask.
+        """
         D, H, W = msk.shape
         labels = torch.zeros((D, H, W), dtype=torch.int32)
         current_label = 1
@@ -411,20 +519,45 @@ class SizeFilter:
         return labels,current_label -1
     
     @staticmethod
-    def _keep_center_only(msk):        
+    def _keep_center_only(msk:torch.Tensor)->torch.Tensor:        
         """
-        return mask (msk) with only the connected component that is the closest 
-        to the center of the image.
+        Keep only the connected component in the mask that is closest to the image center.
+
+        Parameters
+        ----------
+        msk : torch.Tensor
+            Binary mask (2D or 3D) where connected components are to be analyzed.
+
+        Returns
+        -------
+        torch.Tensor
+            Mask with only the connected component closest to the center.
+            The returned mask has the same dtype as input, with values 0 or 255.
         """
         labels, num = SizeFilter._label(msk)
         close_idx = SizeFilter._closest(labels,num)
         return (labels==close_idx).astype(msk.dtype)*255
     
     @staticmethod
-    def _closest(labels:torch.Tensor, num:int):
+    def _closest(labels:torch.Tensor, num:int)->torch.Tensor:
         """
-        return the index of the object the closest to the center of the image.
-        num: number of label in the image (background does not count)
+        Find the label index of the object closest to the center of the image.
+
+        The function computes the barycenter of all objects (labels 1 to num),
+        then returns the label of the object whose barycenter is closest to the image center.
+
+        Parameters
+        ----------
+        labels : torch.Tensor
+            Label image array where each pixel has an integer label.
+        num : int
+            Number of labels (excluding background) to consider.
+
+        Returns
+        -------
+        int
+            The label index (1-based) of the object closest to the image center.
+            Returns 1 if no objects are found.
         """
         labels_center = torch.tensor(labels.shape, dtype=torch.float32) / 2
         centers = [SizeFilter._center(labels,idx+1) for idx in range(num)]
@@ -436,12 +569,26 @@ class SizeFilter:
             return torch.argmin(dist,dim=None)+1
     
     @staticmethod
-    def keep_big_volumes(msk, thres_rate:float=0.3):
+    def keep_big_volumes(msk:torch.Tensor, thres_rate:float=0.3)->torch.Tensor:
         """
-        Return the mask (msk) with less labels/volumes. Select only the biggest volumes with
-        the following strategy: minimum_volume = thres_rate * np.sum(np.square(vol))/np.sum(vol)
-        This computation could be seen as the expected volume if the variable volume follows the 
-        probability distribution: p(vol) = vol/np.sum(vol) 
+        Return a mask keeping only the largest connected components based on a volume threshold.
+
+        The threshold is computed as: min_volume = thres_rate * otsu_thresholding(volumes)
+        where `volumes` are the sizes of all connected components (excluding background),
+        and `otsu_thresholding` finds an adaptive threshold on the volumes distribution.
+
+        Parameters
+        ----------
+        msk : torch.Tensor
+            Input binary mask.
+        thres_rate : float, default=0.3
+            Multiplier for the threshold on volumes.
+
+        Returns
+        -------
+        torch.Tensor
+            Mask with only the connected components whose volume is greater than the threshold.
+            Background remains zero.
         """
         # transform image to label
         labels, num = SizeFilter._label(msk)
@@ -473,13 +620,23 @@ class SizeFilter:
         return s
     
     @staticmethod
-    def keep_biggest_volume_centered(msk):
+    def keep_biggest_volume_centered(msk:torch.Tensor)->torch.Tensor:
         """
-        return mask (msk) with only the connected component that is the closest 
-        to the center of the image if its volumes is not too small ohterwise returns
-        the biggest object (different from the background).
-        (too small meaning that its volumes shouldn't smaller than half of the biggest one)
-        the final mask intensities are either 0 or msk.max()
+        Return a mask with only the connected component closest to the image center, provided its volume is not too small compared to the largest connected component. Otherwise, return the largest connected component.
+
+        "Too small" means its volume is less than half of the largest component.
+
+        The returned mask intensities are either 0 or `msk.max()`.
+
+        Parameters
+        ----------
+        msk : torch.Tensor
+            Input binary mask.
+
+        Returns
+        -------
+        torch.Tensor
+            Mask with only one connected component kept.
         """
         labels, num = SizeFilter._label(msk)
         if num <= 1: # if only one volume, no need to remove something
@@ -496,6 +653,7 @@ class SizeFilter:
         return (labels==close_idx).to(msk.dtype)*msk.max()
 
 class PostProcessing:
+    """Class that encapsulate different torchscript compatible post processing."""
     @staticmethod
     def seg_postprocessing(logit:torch.Tensor,
                            use_softmax:bool,
@@ -512,6 +670,16 @@ class PostProcessing:
         ----------
         logit : torch.Tensor
             The raw model output.
+        use_softmax: bool
+            Whether softmax was used at training (default behaviour)
+        force_softmax: bool
+            If training done without softmax, force the postprocessing to use it to create the mask
+        keep_big_only: bool
+            Postprocessing to remove noise by keeping the bigger object, defined by an Otsu thresoldhing (not sure if work for 2D)
+        keep_biggest_only: bool
+            Postprocessing to remove noise by keeping the biggest centered object (not sure if work for 2D)
+        return_logit: bool
+            Whether to skip post processing or not.
 
         Returns
         -------
@@ -559,12 +727,11 @@ class PostProcessing:
         out = out.to(torch.uint8)    
         return out
 
-
 class ModelExport(torch.nn.Module):
-
+    """Class that encapsulate the prediction pipeline."""
     def __init__(self,
                 model,
-                original_shape,
+                original_shape:torch.Size,
                 axes_order:str,
                 patch_size:list,
                 num_workers:int = 4,
@@ -576,6 +743,38 @@ class ModelExport(torch.nn.Module):
                 keep_big_only:bool=False,
                 keep_biggest_only:bool=False,
                 return_logit:bool=False):
+        """"
+        Initialize the model.
+
+        Parameters
+        ----------
+        model: torch.nn.Module
+            A torchsript compatible module (do not type hint it torchscript doesn't understant dynamic class)
+        original_shape: torch.Size
+            Shape of the image, it was used for resampling but not implemented in torchscript.
+        axes_order: str
+            Not used
+        patch_size: list of int of size 3 (or 2 for 2d)
+            Size of a patch
+        num_worker: int, default=4
+            Number of process used, if 1, no subprocess is started
+        device: strndefault=cpu
+            Device used for compilation, must be same as destination, only 'cpu','cuda' and 'mps' work.
+        tta: bool, default=False
+            Whether data augmentation is used during prediction (longer but more precise)
+        batch_size: int
+            Size of a single batch
+        use_softmax: bool, default=True
+            Whether softmax was used at training (default behaviour)
+        force_softmax: bool, default=False
+            If training done without softmax, force the postprocessing to use it to create the mask
+        keep_big_only: bool, default=False
+            Postprocessing to remove noise by keeping the bigger object, defined by an Otsu thresoldhing (not sure if work for 2D)
+        keep_biggest_only: bool, default=False
+            Postprocessing to remove noise by keeping the biggest centered object (not sure if work for 2D)
+        return_logit: bool, default=False
+            Whether to skip post processing or not.
+        """
         super().__init__()
         self.model = model
         self.device = device
@@ -594,10 +793,35 @@ class ModelExport(torch.nn.Module):
         self.model = model.to(self.device).eval()
         self.model.to(self.device)
 
-    def process_batch(self,X:torch.Tensor,batch_locations:List[Tuple[int,int,int,int,int,int]],pred_aggr:List[torch.Tensor],patch_loc_preds:List[Tuple[int,int,int,int,int,int]]):
+    def process_batch(self,
+                      X:torch.Tensor,
+                      batch_locations:List[Tuple[int,int,int,int,int,int]],
+                      pred_aggr:List[torch.Tensor],
+                      patch_loc_preds:List[Tuple[int,int,int,int,int,int]]
+                      )->None:
+        """
+        Make prediction to a batch and add it to a prediction list.
+        
+        Parameters
+        ----------
+        X: torch.Tensor
+            The batch to process: NCZYX
+        batch_location : list of location
+            The locations of the different elements of the batch, is added to prediction location
+        pred_aggr: list of torch.Tensor
+            List of predictions
+        patch_loc_pred: list of location
+            List of the prediction location
+
+        Returns
+        -------
+        None
+        """
         with torch.no_grad():
             if self.device == 'cuda':
                 X = X.cuda()
+            elif self.device == 'mps':
+                X = X.to('mps')
             
             # Contrarly to seg_patch_2 we don't use autocast as torchscript lose even more precision
             # Hence, exported model will be slower but more accurate on GPU
@@ -621,7 +845,26 @@ class ModelExport(torch.nn.Module):
                 pred_aggr.append(pred[j])
                 patch_loc_preds.append(batch_locations[j])
 
-    def forward(self,img:torch.Tensor):
+    def forward(self,img:torch.Tensor)->torch.Tensor:
+        """
+        Forward pass of the model.
+
+        1. Sample the image
+        2. Create batches
+        3. Delegate batches prediction to model
+        4. Aggregate prediction
+        5. Delegate post processing
+
+        Paramters
+        ---------
+        img: torch.Tensor
+            An image to predict
+        
+        Returns
+        -------
+        logit: torch.Tensor
+            Post processed output of the model
+        """
         overlap = 0.5
         patch_size = torch.tensor(self.patch_size,dtype=torch.int)
         original_shape = torch.tensor(self.original_shape)
@@ -645,7 +888,7 @@ class ModelExport(torch.nn.Module):
             batches.append(torch.stack(batch, dim=0))
             batches_locations.append(patches_location[i:i + self.batch_size])
 
-        if self.num_workers <= 1 :
+        if self.num_workers <= 1 : # No need of multiprocessing
             for i in range(len(batches)):
                 self.process_batch(batches[i],batches_locations[i],pred_aggr,patch_loc_preds)
         else:
